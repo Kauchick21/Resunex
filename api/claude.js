@@ -12,17 +12,13 @@ module.exports = async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
 
-    // Convert Anthropic format → Gemini format
     const systemText = body.system || "";
     const userMessages = body.messages || [];
     const lastMessage = userMessages[userMessages.length - 1];
 
-    // Build Gemini contents
     let contents = [];
 
-    // Handle text or multipart (image) messages
     if (lastMessage && Array.isArray(lastMessage.content)) {
-      // Has image
       const parts = lastMessage.content.map(c => {
         if (c.type === "text") return { text: c.text };
         if (c.type === "image") return {
@@ -36,7 +32,6 @@ module.exports = async function handler(req, res) {
       if (systemText) parts.unshift({ text: systemText + "\n\n" });
       contents = [{ role: "user", parts }];
     } else {
-      // Plain text
       const text = lastMessage?.content || "";
       contents = [{
         role: "user",
@@ -51,15 +46,31 @@ module.exports = async function handler(req, res) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents,
-          generationConfig: { maxOutputTokens: body.max_tokens || 1500 }
+          generationConfig: {
+            maxOutputTokens: body.max_tokens || 1500,
+            temperature: 0.3
+          },
+          systemInstruction: systemText ? {
+            parts: [{ text: systemText }]
+          } : undefined
         })
       }
     );
 
     const geminiData = await geminiRes.json();
 
-    // Convert Gemini response → Anthropic format (so frontend works unchanged)
-    const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    if (!geminiRes.ok) {
+      return res.status(geminiRes.status).json({ 
+        error: "Gemini error", 
+        detail: geminiData 
+      });
+    }
+
+    let text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    // Clean up markdown code blocks that Gemini sometimes adds
+    text = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
+
     return res.status(200).json({
       content: [{ type: "text", text }]
     });
