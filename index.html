@@ -13,21 +13,30 @@
   
   <!-- Mammoth.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+
+  <style>
+    @media print {
+      body * { visibility: hidden; }
+      #cv-preview-card, #cv-preview-card * { visibility: visible; }
+      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; }
+      header, .no-print { display: none !important; }
+    }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
 
   <!-- Header -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
     <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
       <div class="flex items-center gap-4">
-        <button id="backBtn" onclick="setState({ page: 'landing' })" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">
+        <button id="backBtn" onclick="handleBack()" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">
           ← Back
         </button>
         <span class="text-xl font-black tracking-tight text-blue-600">Resunex</span>
       </div>
       <div class="flex items-center gap-3">
         <button onclick="setState({ page: 'upload' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5">Upload CV</button>
-        <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-xl shadow-sm transition-all">
+        <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-xl shadow-sm transition-all">
           ⚡ Create CV
         </button>
       </div>
@@ -40,7 +49,7 @@
   </main>
 
   <!-- Toast Notification Container -->
-  <div id="toast" class="fixed bottom-6 right-6 hidden z-50"></div>
+  <div id="toast" class="fixed bottom-6 right-6 hidden z-50 no-print"></div>
 
   <!-- JavaScript Logic -->
   <script>
@@ -90,25 +99,20 @@
     // ─── ROBUST JSON REPAIR & SANITIZATION ───────────────────
     function repairJsonString(rawStr) {
       if (!rawStr) return "{}";
-      
       let str = rawStr.trim();
-
       const startIdx = str.indexOf('{');
       const endIdx = str.lastIndexOf('}');
       if (startIdx !== -1 && endIdx !== -1) {
         str = str.substring(startIdx, endIdx + 1);
       }
-
       str = str.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
         return match
           .replace(/\n/g, "\\n")
           .replace(/\r/g, "\\r")
           .replace(/\t/g, "\\t");
       });
-
       str = str.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
       str = str.replace(/,\s*([}\]])/g, '$1');
-
       return str;
     }
 
@@ -217,8 +221,7 @@
         experience: [{ id: 1, company: "", title: "", type: "Full-time", location: "", from: "", to: "", current: false, resp: "" }],
         projects: [{ id: 1, name: "", desc: "", tech: "", github: "", live: "" }],
         skills: { technical: [], soft: [], languages: [], certifications: [] },
-        achievements: { awards: "", hackathons: "", publications: "", patents: "" },
-        template: "minimal"
+        achievements: { awards: "", hackathons: "", publications: "", patents: "" }
       };
     }
 
@@ -236,6 +239,11 @@
       render(); 
     }
 
+    function handleBack() {
+      if (state.page === "preview") setState({ page: "builder" });
+      else if (state.page === "builder" || state.page === "upload") setState({ page: "landing" });
+    }
+
     function updData(path, val) {
       const n = JSON.parse(JSON.stringify(state.data));
       const keys = path.split(".");
@@ -249,7 +257,6 @@
       render();
     }
 
-    // Array Item Handlers
     function addItem(section, itemSchema) {
       const list = [...(state.data[section] || [])];
       list.push({ ...itemSchema, id: Date.now() });
@@ -391,13 +398,7 @@
                 <div class="w-16 h-16 bg-white rounded-full shadow-sm mx-auto flex items-center justify-center text-blue-600">☁️</div>
                 <div>
                   <p class="font-semibold text-slate-700">Drag & drop your resume here</p>
-                  <p class="text-xs text-slate-400 mt-1">or click the button below to browse</p>
-                </div>
-                <div class="flex items-center justify-center gap-2 text-xs text-slate-500">
-                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">📄 PDF</span>
-                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">📝 Word (.docx)</span>
-                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">🖼️ JPG / PNG</span>
-                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">☕ WEBP</span>
+                  <p class="text-xs text-slate-400 mt-1">or click below to browse</p>
                 </div>
                 <button type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all">
                   📁 Choose File
@@ -423,11 +424,10 @@
 
         app.innerHTML = `
           <div class="max-w-4xl mx-auto w-full space-y-8">
-            <!-- Header Bar -->
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
               <div>
                 <h2 class="text-2xl font-bold text-slate-900">Resume Builder</h2>
-                <p class="text-xs text-slate-500">Review and edit all parsed details from your resume.</p>
+                <p class="text-xs text-slate-500">Review and edit your parsed resume details.</p>
               </div>
               <div class="bg-emerald-50 text-emerald-700 font-semibold text-sm px-4 py-2 rounded-xl border border-emerald-200">
                 ATS Score: ${atsScore(d)}%
@@ -477,7 +477,6 @@
                 <h3 class="text-lg font-bold text-slate-800">💼 Work Experience</h3>
                 <button onclick="addItem('experience', { company: '', title: '', from: '', to: '', resp: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Position</button>
               </div>
-              
               <div class="space-y-6">
                 ${expList.map((exp, idx) => `
                   <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
@@ -501,7 +500,7 @@
                       </div>
                     </div>
                     <div>
-                      <label class="block text-xs font-medium text-slate-500">Responsibilities / Accomplishments</label>
+                      <label class="block text-xs font-medium text-slate-500">Responsibilities</label>
                       <textarea rows="3" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${exp.resp || ''}</textarea>
                     </div>
                   </div>
@@ -515,7 +514,6 @@
                 <h3 class="text-lg font-bold text-slate-800">🎓 Education</h3>
                 <button onclick="addItem('education', { college: '', degree: '', spec: '', from: '', to: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Education</button>
               </div>
-
               <div class="space-y-6">
                 ${eduList.map((edu, idx) => `
                   <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
@@ -543,13 +541,12 @@
               </div>
             </div>
 
-            <!-- Projects -->
+            <!-- Key Projects -->
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
               <div class="flex items-center justify-between border-b pb-2">
                 <h3 class="text-lg font-bold text-slate-800">🚀 Key Projects</h3>
                 <button onclick="addItem('projects', { name: '', desc: '', tech: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Project</button>
               </div>
-
               <div class="space-y-6">
                 ${projList.map((proj, idx) => `
                   <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
@@ -592,6 +589,124 @@
               </div>
             </div>
 
+            <!-- Submit Action Bar -->
+            <div class="flex justify-end pt-4">
+              <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-base px-8 py-4 rounded-xl shadow-lg transition-all flex items-center gap-2">
+                ⚡ Generate & Preview CV →
+              </button>
+            </div>
+
+          </div>
+        `;
+      } else if (state.page === "preview") {
+        const d = state.data;
+        const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
+        const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+        const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+        const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+
+        app.innerHTML = `
+          <div class="max-w-4xl mx-auto w-full space-y-6">
+            <!-- Top Controls -->
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between no-print">
+              <button onclick="setState({ page: 'builder' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl">
+                ← Edit Details
+              </button>
+              <div class="flex gap-3">
+                <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-6 py-2 rounded-xl shadow-sm transition-all">
+                  🖨️ Print / Save as PDF
+                </button>
+              </div>
+            </div>
+
+            <!-- Resume Render Card -->
+            <div id="cv-preview-card" class="bg-white border border-slate-200 shadow-md rounded-2xl p-10 space-y-6 text-slate-800">
+              <!-- Header -->
+              <div class="border-b border-slate-200 pb-6 text-center">
+                <h1 class="text-3xl font-extrabold text-slate-900">${fullName}</h1>
+                <div class="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-2">
+                  ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
+                  ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
+                  ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
+                  ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
+                </div>
+              </div>
+
+              <!-- Summary -->
+              ${d.summary ? `
+                <div class="space-y-2">
+                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Professional Summary</h2>
+                  <p class="text-sm text-slate-700 leading-relaxed">${d.summary}</p>
+                </div>
+              ` : ''}
+
+              <!-- Experience -->
+              ${d.experience?.length ? `
+                <div class="space-y-4">
+                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Work Experience</h2>
+                  <div class="space-y-4">
+                    ${d.experience.map(exp => `
+                      <div>
+                        <div class="flex justify-between items-baseline">
+                          <h3 class="font-bold text-slate-900 text-sm">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3>
+                          <span class="text-xs text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span>
+                        </div>
+                        ${exp.resp ? `<p class="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- Education -->
+              ${d.education?.length ? `
+                <div class="space-y-3">
+                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Education</h2>
+                  <div class="space-y-3">
+                    ${d.education.map(edu => `
+                      <div class="flex justify-between items-baseline">
+                        <div>
+                          <h3 class="font-bold text-slate-900 text-sm">${edu.college || 'University'}</h3>
+                          <p class="text-xs text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p>
+                        </div>
+                        <span class="text-xs text-slate-500">${edu.from || ''} - ${edu.to || ''}</span>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- Key Projects -->
+              ${d.projects?.length ? `
+                <div class="space-y-3">
+                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Projects</h2>
+                  <div class="space-y-3">
+                    ${d.projects.map(proj => `
+                      <div>
+                        <div class="flex justify-between items-baseline">
+                          <h3 class="font-bold text-slate-900 text-sm">${proj.name || 'Project'}</h3>
+                          ${proj.tech ? `<span class="text-xs text-slate-500 italic">${proj.tech}</span>` : ''}
+                        </div>
+                        ${proj.desc ? `<p class="text-xs text-slate-600 mt-1">${proj.desc}</p>` : ''}
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              <!-- Skills & Certifications -->
+              ${(techSkills.length || softSkills.length || certs.length) ? `
+                <div class="space-y-3">
+                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Skills & Certifications</h2>
+                  <div class="space-y-1 text-xs text-slate-700">
+                    ${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}
+                    ${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}
+                    ${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}
+                  </div>
+                </div>
+              ` : ''}
+
+            </div>
           </div>
         `;
       }
