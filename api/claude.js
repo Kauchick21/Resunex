@@ -24,28 +24,30 @@ module.exports = async function handler(req, res) {
         if (c.type === "image") {
           return {
             inlineData: {
-              mimeType: c.source.media_type,
-              data: c.source.data
+              mimeType: c.source?.media_type || "image/jpeg",
+              data: c.source?.data || ""
             }
           };
         }
         return { text: "" };
       });
-    } else {
-      const text = typeof lastMessage?.content === "string" ? lastMessage.content : "";
+    } else if (lastMessage) {
+      const text = typeof lastMessage.content === "string" 
+        ? lastMessage.content 
+        : JSON.stringify(lastMessage.content || "");
       parts = [{ text }];
+    } else {
+      parts = [{ text: "Parse resume content" }];
     }
 
-    // Build standard Gemini payload
     const payload = {
       contents: [{ role: "user", parts }],
       generationConfig: {
-        maxOutputTokens: body.max_tokens || 1500,
+        maxOutputTokens: body.max_tokens || 2000,
         temperature: 0.3
       }
     };
 
-    // Attach system instruction properly
     if (systemText) {
       payload.systemInstruction = {
         parts: [{ text: systemText }]
@@ -72,7 +74,7 @@ module.exports = async function handler(req, res) {
 
     let text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    // Clean markdown wrappers
+    // Clean markdown formatting if returned by Gemini
     text = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
 
     return res.status(200).json({
