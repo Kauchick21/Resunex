@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "API key not configured" });
+  if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY environment variable is not set in Vercel" });
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
@@ -44,11 +44,11 @@ module.exports = async function handler(req, res) {
       contents: [{ role: "user", parts }],
       generationConfig: {
         maxOutputTokens: body.max_tokens || 2000,
-        temperature: 0.3
+        temperature: 0.2
       }
     };
 
-    if (systemText) {
+    if (systemText && systemText.trim() !== "") {
       payload.systemInstruction = {
         parts: [{ text: systemText }]
       };
@@ -66,15 +66,16 @@ module.exports = async function handler(req, res) {
     const geminiData = await geminiRes.json();
 
     if (!geminiRes.ok) {
+      const detailedMessage = geminiData?.error?.message || JSON.stringify(geminiData);
+      console.error("Gemini API Error Detail:", geminiData);
       return res.status(geminiRes.status).json({ 
-        error: "Gemini error", 
-        detail: geminiData 
+        error: `Gemini API Error: ${detailedMessage}`
       });
     }
 
     let text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    // Clean markdown formatting if returned by Gemini
+    // Strip Markdown code block wrappers
     text = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
 
     return res.status(200).json({
@@ -82,6 +83,6 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (err) {
-    return res.status(500).json({ error: "Server error", detail: err.message });
+    return res.status(500).json({ error: `Server error: ${err.message}` });
   }
 };
