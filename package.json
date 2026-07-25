@@ -1,0 +1,14 @@
+{
+  "name": "resunex",
+  "version": "1.0.0",
+  "description": "Create Your CV Free",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'Static HTML project - no build needed'"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^1.4.1"
+  },
+  "devDependencies": {},
+  "type": "module"
+}
