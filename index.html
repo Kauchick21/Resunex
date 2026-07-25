@@ -52,7 +52,7 @@
     const MODEL = "gemini-2.5-flash";
 
     // ─── API HELPERS ──────────────────────────────────────────
-    async function callClaude(messages, system, maxTokens = 1500) {
+    async function callClaude(messages, system, maxTokens = 2000) {
       const res = await fetch(API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -69,7 +69,7 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 2000,
+          max_tokens: 4000,
           system,
           messages: [{
             role: "user",
@@ -91,9 +91,9 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: MODEL,
-          max_tokens: 2000,
+          max_tokens: 4000,
           system,
-          messages: [{ role: "user", content: `Here is the full text extracted from a resume. Parse it into structured JSON:\n\n${text}` }]
+          messages: [{ role: "user", content: `Parse this resume content into structured JSON:\n\n${text}` }]
         })
       });
       const data = await res.json();
@@ -101,7 +101,24 @@
       return data.content?.[0]?.text || "";
     }
 
-    // ─── FILE PROCESSING HELPERS ────────────────────────────────
+    // ─── FILE PROCESSING & REPAIR HELPERS ──────────────────────
+    function repairJsonString(jsonStr) {
+      // 1. Extract JSON object bounds
+      const startIdx = jsonStr.indexOf('{');
+      const endIdx = jsonStr.lastIndexOf('}');
+      if (startIdx !== -1 && endIdx !== -1) {
+        jsonStr = jsonStr.substring(startIdx, endIdx + 1);
+      }
+
+      // 2. Remove illegal control characters & unescaped line breaks inside strings
+      jsonStr = jsonStr.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+
+      // 3. Fix trailing commas before closing brackets or braces
+      jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+
+      return jsonStr;
+    }
+
     function fileToBase64(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -252,17 +269,7 @@
       if (!file) return;
       setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
 
-      const systemPrompt = `You are a strict JSON generator. Parse the resume content into valid JSON with no comments, trailing commas, or markdown formatting outside the JSON object.
-      Use this exact structure:
-      {
-        "personal": { "firstName": "", "lastName": "", "email": "", "phone": "", "city": "", "state": "", "country": "", "linkedin": "", "github": "", "portfolio": "" },
-        "summary": "",
-        "education": [{ "college": "", "degree": "", "spec": "", "cgpa": "", "from": "", "to": "", "desc": "" }],
-        "experience": [{ "company": "", "title": "", "type": "Full-time", "location": "", "from": "", "to": "", "current": false, "resp": "" }],
-        "projects": [{ "name": "", "desc": "", "tech": "", "github": "", "live": "" }],
-        "skills": { "technical": [], "soft": [], "languages": [], "certifications": [] },
-        "achievements": { "awards": "", "hackathons": "", "publications": "", "patents": "" }
-      }`;
+      const systemPrompt = "Extract structured resume details according to the provided JSON schema.";
 
       try {
         let jsonStr = "";
@@ -301,18 +308,9 @@
 
         setState({ uploadProgress: 90, uploadMessage: "Structuring resume..." });
 
-        // Robust JSON string extraction & cleaning
-        const startIdx = jsonStr.indexOf('{');
-        const endIdx = jsonStr.lastIndexOf('}');
-        
-        if (startIdx !== -1 && endIdx !== -1) {
-          jsonStr = jsonStr.substring(startIdx, endIdx + 1);
-        }
-
-        // Clean trailing commas before closing brackets
-        jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
-
-        const parsed = JSON.parse(jsonStr);
+        // Clean and parse JSON safely
+        const cleanJsonStr = repairJsonString(jsonStr);
+        const parsed = JSON.parse(cleanJsonStr);
 
         setState({
           data: { ...blankData(), ...parsed },
