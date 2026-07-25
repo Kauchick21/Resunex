@@ -1,580 +1,438 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Resunex – Create Your CV Free, No Charge to Download</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#F1F5F9;color:#0f172a}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#f1f5f9}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
-input,textarea,select{font-family:inherit;font-size:14px;border:1.5px solid #e2e8f0;border-radius:8px;padding:9px 12px;width:100%;outline:none;background:#fff;color:#0f172a;transition:border-color .15s,box-shadow .15s}
-input:focus,textarea:focus,select:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.1)}
-textarea{resize:vertical;line-height:1.6}
-label{display:block;font-size:13px;font-weight:500;color:#475569;margin-bottom:5px}
-button{font-family:inherit;cursor:pointer;border:none;outline:none;transition:all .15s}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-@keyframes spin{to{transform:rotate(360deg)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.fade{animation:fadeIn .25s ease}
-.spin{animation:spin .7s linear infinite}
-.pulse{animation:pulse 1.4s ease infinite}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resunex — Create Your CV Free</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- PDF.js CDN (Required for PDF parsing & rendering) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  
+  <!-- Mammoth.js CDN (Required for .docx extraction) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body>
-<div id="app"></div>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
 
-<script>
-// ─── CONFIG ───────────────────────────────────────────────
-const API = "/api/claude";
-const MODEL = "gemini-1.5-flash";
-
-// ─── HELPERS ─────────────────────────────────────────────
-async function callClaude(messages, system, maxTokens = 1500) {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
-  return data.content?.[0]?.text || "";
-}
-
-async function callClaudeWithImage(base64, mimeType, prompt, system) {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 2000,
-      system,
-      messages: [{
-        role: "user",
-        content: [
-          { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
-          { type: "text", text: prompt }
-        ]
-      }]
-    })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
-  return data.content?.[0]?.text || "";
-}
-
-async function callClaudeWithText(text, system) {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 2000,
-      system,
-      messages: [{ role: "user", content: `Here is the full text extracted from a resume. Parse it into structured JSON:\n\n${text}` }]
-    })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
-  return data.content?.[0]?.text || "";
-}
-
-function atsScore(d) {
-  let s = 0, t = 0;
-  const a = (v, p) => { t += p; if (v) s += p; };
-  a(d.personal.firstName && d.personal.lastName, 5);
-  a(d.personal.email, 5); a(d.personal.phone, 5); a(d.personal.linkedin, 3);
-  a(d.summary?.length > 80, 15);
-  a(d.experience?.some(e => e.company), 20);
-  a(d.experience?.some(e => e.resp?.length > 40), 10);
-  a(d.education?.some(e => e.college), 10);
-  a(d.skills?.technical?.length > 2, 10);
-  a(d.projects?.some(p => p.name), 7);
-  a(d.achievements?.awards || d.achievements?.hackathons, 5);
-  a(d.skills?.certifications?.length > 0, 5);
-  return Math.round((s / t) * 100);
-}
-
-function blankData() {
-  return {
-    personal: { firstName: "", lastName: "", email: "", phone: "", city: "", state: "", country: "", linkedin: "", github: "", portfolio: "" },
-    summary: "",
-    education: [{ id: 1, college: "", degree: "", spec: "", cgpa: "", from: "", to: "", desc: "" }],
-    experience: [{ id: 1, company: "", title: "", type: "Full-time", location: "", from: "", to: "", current: false, resp: "" }],
-    projects: [{ id: 1, name: "", desc: "", tech: "", github: "", live: "" }],
-    skills: { technical: [], soft: [], languages: [], certifications: [] },
-    achievements: { awards: "", hackathons: "", publications: "", patents: "" },
-    template: "minimal"
-  };
-}
-
-let state = {
-  page: "landing",
-  step: 0,
-  data: blankData(),
-  aiLoading: {},
-  toast: null,
-  preview: false,
-  uploadProgress: null,
-  uploadMessage: ""
-};
-
-function setState(patch) { state = { ...state, ...patch }; render(); }
-function updData(path, val) {
-  const n = JSON.parse(JSON.stringify(state.data));
-  const keys = path.split(".");
-  let cur = n;
-  for (let i = 0; i < keys.length - 1; i++) cur = cur[keys[i]];
-  cur[keys[keys.length - 1]] = val;
-  state.data = n; render();
-}
-
-let toastTimer = null;
-function showToast(msg, type = "ok") {
-  if (toastTimer) clearTimeout(toastTimer);
-  state.toast = { msg, type }; render();
-  toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
-}
-
-// ─── RESUME TEMPLATES ─────────────────────────────────────
-function resumeMinimal(d) {
-  const p = d.personal;
-  const nm = `${p.firstName} ${p.lastName}`.trim() || "Your Name";
-  return `<div style="font-family:Georgia,serif;padding:30px 36px;font-size:11px;line-height:1.55;color:#1a1a1a;background:#fff;min-height:100%">
-    <div style="text-align:center;border-bottom:2px solid #1a1a1a;padding-bottom:10px;margin-bottom:14px">
-      <h1 style="font-size:22px;font-weight:700;letter-spacing:1px;margin-bottom:4px">${nm}</h1>
-      <div style="display:flex;justify-content:center;flex-wrap:wrap;gap:10px;font-size:10px;color:#555">
-        ${p.email?`<span>✉ ${p.email}</span>`:""}${p.phone?`<span>📞 ${p.phone}</span>`:""}
-        ${p.city?`<span>📍 ${p.city}${p.state?", "+p.state:""}</span>`:""}
-        ${p.linkedin?`<span>in ${p.linkedin}</span>`:""}${p.github?`<span>⚡ ${p.github}</span>`:""}
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <button id="backBtn" onclick="setState({ page: 'landing' })" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">
+          ← Back
+        </button>
+        <span class="text-xl font-black tracking-tight text-blue-600">Resunex</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="setState({ page: 'upload' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5">Upload CV</button>
+        <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-xl shadow-sm transition-all">
+          ⚡ Create CV
+        </button>
       </div>
     </div>
-    ${d.summary?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;border-bottom:1px solid #ccc;padding-bottom:3px;margin-bottom:7px">Summary</h2><p style="text-align:justify">${d.summary}</p></div>`:""}
-    ${d.experience?.some(e=>e.company)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;border-bottom:1px solid #ccc;padding-bottom:3px;margin-bottom:7px">Experience</h2>${d.experience.filter(e=>e.company).map(e=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between"><strong>${e.title||""}</strong><span style="font-size:10px;color:#666">${e.from||""}${e.from?" – ":""}${e.current?"Present":e.to||""}</span></div><div style="color:#444;margin-bottom:2px">${e.company||""}${e.location?" · "+e.location:""}</div>${e.resp?`<p style="color:#555;margin-top:2px">${e.resp}</p>`:""}</div>`).join("")}</div>`:""}
-    ${d.education?.some(e=>e.college)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;border-bottom:1px solid #ccc;padding-bottom:3px;margin-bottom:7px">Education</h2>${d.education.filter(e=>e.college).map(e=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between"><strong>${e.degree||""}${e.spec?" in "+e.spec:""}</strong><span style="font-size:10px;color:#666">${e.from||""}${e.from?" – ":""}${e.to||""}</span></div><div style="color:#444">${e.college||""}${e.cgpa?" · CGPA: "+e.cgpa:""}</div></div>`).join("")}</div>`:""}
-    ${d.projects?.some(p=>p.name)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;border-bottom:1px solid #ccc;padding-bottom:3px;margin-bottom:7px">Projects</h2>${d.projects.filter(p=>p.name).map(p=>`<div style="margin-bottom:6px"><strong>${p.name}</strong>${p.tech?`<span style="color:#666"> · ${p.tech}</span>`:""} ${p.desc?`<p style="color:#555;margin-top:2px">${p.desc}</p>`:""}</div>`).join("")}</div>`:""}
-    ${(d.skills?.technical?.length>0||d.skills?.soft?.length>0)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;border-bottom:1px solid #ccc;padding-bottom:3px;margin-bottom:7px">Skills</h2>${d.skills.technical?.length>0?`<p><strong>Technical: </strong>${d.skills.technical.join(" · ")}</p>`:""}${d.skills.soft?.length>0?`<p><strong>Soft Skills: </strong>${d.skills.soft.join(" · ")}</p>`:""}${d.skills.languages?.length>0?`<p><strong>Languages: </strong>${d.skills.languages.join(" · ")}</p>`:""}${d.skills.certifications?.length>0?`<p><strong>Certifications: </strong>${d.skills.certifications.join(" · ")}</p>`:""}</div>`:""}
-    ${(d.achievements?.awards||d.achievements?.hackathons||d.achievements?.publications)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;border-bottom:1px solid #ccc;padding-bottom:3px;margin-bottom:7px">Achievements</h2>${d.achievements.awards?`<p><strong>Awards:</strong> ${d.achievements.awards}</p>`:""}${d.achievements.hackathons?`<p><strong>Hackathons:</strong> ${d.achievements.hackathons}</p>`:""}${d.achievements.publications?`<p><strong>Publications:</strong> ${d.achievements.publications}</p>`:""}</div>`:""}
-  </div>`;
-}
+  </header>
 
-function resumeModern(d) {
-  const p = d.personal;
-  const nm = `${p.firstName} ${p.lastName}`.trim() || "Your Name";
-  return `<div style="font-family:'Helvetica Neue',Arial,sans-serif;padding:28px 32px;background:#fff;font-size:11px;color:#1a1a1a">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;padding-bottom:14px;border-bottom:3px solid #2563EB">
-      <div><h1 style="font-size:24px;font-weight:700;color:#0f172a;letter-spacing:-0.5px">${nm}</h1>${d.experience?.[0]?.title?`<p style="color:#2563EB;font-size:13px;font-weight:500;margin-top:3px">${d.experience[0].title}</p>`:""}</div>
-      <div style="text-align:right;font-size:10px;color:#64748b;line-height:1.9">${p.email?`<div>✉ ${p.email}</div>`:""}${p.phone?`<div>📞 ${p.phone}</div>`:""}${p.city?`<div>📍 ${p.city}${p.state?", "+p.state:""}</div>`:""}${p.github?`<div>⚡ ${p.github}</div>`:""}</div>
-    </div>
-    ${d.summary?`<div style="margin-bottom:14px;background:#EFF6FF;border-radius:8px;padding:10px 14px;border-left:4px solid #2563EB"><p style="color:#1e40af;line-height:1.7">${d.summary}</p></div>`:""}
-    ${d.experience?.some(e=>e.company)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#2563EB;margin-bottom:7px">Experience</h2>${d.experience.filter(e=>e.company).map(e=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between"><strong>${e.title||""}</strong><span style="font-size:10px;color:#64748b">${e.from||""}${e.from?" – ":""}${e.current?"Present":e.to||""}</span></div><div style="color:#2563EB;font-size:10px;margin-bottom:2px">${e.company||""}${e.location?" · "+e.location:""}</div>${e.resp?`<p style="color:#555">${e.resp}</p>`:""}</div>`).join("")}</div>`:""}
-    ${d.education?.some(e=>e.college)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#2563EB;margin-bottom:7px">Education</h2>${d.education.filter(e=>e.college).map(e=>`<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between"><strong>${e.degree||""}${e.spec?" in "+e.spec:""}</strong><span style="font-size:10px;color:#64748b">${e.from||""}${e.from?" – ":""}${e.to||""}</span></div><div style="color:#444">${e.college||""}${e.cgpa?" · CGPA: "+e.cgpa:""}</div></div>`).join("")}</div>`:""}
-    ${d.projects?.some(p=>p.name)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#2563EB;margin-bottom:7px">Projects</h2>${d.projects.filter(p=>p.name).map(p=>`<div style="margin-bottom:6px"><strong>${p.name}</strong>${p.tech?`<span style="color:#2563EB"> · ${p.tech}</span>`:""} ${p.desc?`<p style="color:#555;margin-top:2px">${p.desc}</p>`:""}</div>`).join("")}</div>`:""}
-    ${d.skills?.technical?.length>0?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#2563EB;margin-bottom:7px">Skills</h2><div style="display:flex;flex-wrap:wrap;gap:5px">${[...(d.skills.technical||[]),...(d.skills.soft||[])].map(s=>`<span style="background:#EFF6FF;color:#1d4ed8;padding:3px 9px;border-radius:20px;font-size:10px;font-weight:500">${s}</span>`).join("")}</div></div>`:""}
-  </div>`;
-}
+  <!-- Main Container -->
+  <main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
+    <!-- Dynamic Content Rendered Here -->
+  </main>
 
-function resumeCorporate(d) {
-  const p = d.personal;
-  const nm = `${p.firstName} ${p.lastName}`.trim() || "Your Name";
-  const initials = (p.firstName?.[0]||"")+(p.lastName?.[0]||"")||"?";
-  return `<div style="font-family:Arial,sans-serif;background:#fff;display:flex;font-size:10.5px;color:#1a1a1a;min-height:100%">
-    <div style="width:190px;background:#1e3a5f;color:#fff;padding:24px 14px;flex-shrink:0">
-      <div style="width:60px;height:60px;border-radius:50%;background:#4a7ab5;margin:0 auto 10px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700">${initials}</div>
-      <h1 style="font-size:13px;font-weight:700;text-align:center;margin-bottom:14px;line-height:1.3">${nm}</h1>
-      <div style="margin-bottom:14px"><h3 style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#90b4d4;margin-bottom:6px;border-bottom:1px solid #2d5a8e;padding-bottom:3px">Contact</h3>
-        ${p.email?`<p style="font-size:9px;margin-bottom:3px;word-break:break-all">✉ ${p.email}</p>`:""}${p.phone?`<p style="font-size:9px;margin-bottom:3px">📞 ${p.phone}</p>`:""}${p.city?`<p style="font-size:9px;margin-bottom:3px">📍 ${p.city}</p>`:""}${p.linkedin?`<p style="font-size:9px;margin-bottom:3px;word-break:break-all">in ${p.linkedin}</p>`:""}
-      </div>
-      ${d.skills?.technical?.length>0?`<div><h3 style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#90b4d4;margin-bottom:6px;border-bottom:1px solid #2d5a8e;padding-bottom:3px">Skills</h3>${d.skills.technical.map(s=>`<div style="background:rgba(255,255,255,.15);border-radius:3px;padding:3px 6px;margin-bottom:3px;font-size:9px">${s}</div>`).join("")}</div>`:""}
-    </div>
-    <div style="flex:1;padding:24px 18px">
-      ${d.summary?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1e3a5f;border-left:3px solid #1e3a5f;padding-left:7px;margin-bottom:7px">Profile</h2><p style="color:#444;line-height:1.65">${d.summary}</p></div>`:""}
-      ${d.experience?.some(e=>e.company)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1e3a5f;border-left:3px solid #1e3a5f;padding-left:7px;margin-bottom:7px">Experience</h2>${d.experience.filter(e=>e.company).map(e=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between"><strong>${e.title||""}</strong><span style="font-size:9px;color:#666">${e.from||""}${e.from?" – ":""}${e.current?"Present":e.to||""}</span></div><div style="color:#444;margin-bottom:2px">${e.company||""}${e.location?" · "+e.location:""}</div>${e.resp?`<p style="color:#555">${e.resp}</p>`:""}</div>`).join("")}</div>`:""}
-      ${d.education?.some(e=>e.college)?`<div style="margin-bottom:14px"><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1e3a5f;border-left:3px solid #1e3a5f;padding-left:7px;margin-bottom:7px">Education</h2>${d.education.filter(e=>e.college).map(e=>`<div style="margin-bottom:7px"><div style="display:flex;justify-content:space-between"><strong>${e.degree||""}${e.spec?" in "+e.spec:""}</strong><span style="font-size:9px;color:#666">${e.from||""}${e.from?" – ":""}${e.to||""}</span></div><div style="color:#444">${e.college||""}${e.cgpa?" · CGPA: "+e.cgpa:""}</div></div>`).join("")}</div>`:""}
-      ${d.projects?.some(p=>p.name)?`<div><h2 style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#1e3a5f;border-left:3px solid #1e3a5f;padding-left:7px;margin-bottom:7px">Projects</h2>${d.projects.filter(p=>p.name).map(p=>`<div style="margin-bottom:6px"><strong>${p.name}</strong>${p.tech?`<span style="color:#666"> · ${p.tech}</span>`:""} ${p.desc?`<p style="color:#555;margin-top:2px">${p.desc}</p>`:""}</div>`).join("")}</div>`:""}
-    </div>
-  </div>`;
-}
+  <!-- Toast Notification Container -->
+  <div id="toast" class="fixed bottom-6 right-6 hidden z-50"></div>
 
-const RESUME_MAP = { minimal:resumeMinimal, modern:resumeModern, corporate:resumeCorporate, google:resumeModern, harvard:resumeMinimal, executive:resumeCorporate };
+  <!-- JavaScript Logic -->
+  <script>
+    // ─── CONFIG ───────────────────────────────────────────────
+    const API = "/api/claude";
+    const MODEL = "gemini-1.5-flash";
 
-function btn(label, id, variant="primary", size="md", disabled=false, extraStyle="") {
-  const sizes = { sm:"padding:6px 14px;font-size:12px", md:"padding:9px 18px;font-size:13px", lg:"padding:12px 26px;font-size:15px" };
-  const variants = {
-    primary:"background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#fff;box-shadow:0 2px 8px rgba(37,99,235,.35)",
-    secondary:"background:#fff;color:#2563EB;border:1.5px solid #2563EB",
-    ghost:"background:transparent;color:#64748b;border:1px solid #e2e8f0",
-    danger:"background:#fef2f2;color:#dc2626;border:1px solid #fecaca",
-    white:"background:#fff;color:#2563EB;box-shadow:0 4px 20px rgba(0,0,0,.2)"
-  };
-  return `<button id="${id}" style="${sizes[size]};${variants[variant]};font-weight:600;border-radius:8px;cursor:${disabled?"not-allowed":"pointer"};font-family:inherit;display:inline-flex;align-items:center;gap:6px;opacity:${disabled?.5:1};${extraStyle}" ${disabled?"disabled":""}>${label}</button>`;
-}
-function card(inner, extraStyle="") { return `<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:20px;${extraStyle}">${inner}</div>`; }
-function field(label, inputHTML, hint="") { return `<div style="margin-bottom:14px"><label>${label}</label>${inputHTML}${hint?`<p style="font-size:11px;color:#94a3b8;margin-top:4px">${hint}</p>`:""}</div>`; }
-function inp(id, val, placeholder="", type="text", disabled=false) { return `<input id="${id}" type="${type}" value="${(val||"").replace(/"/g,'&quot;')}" placeholder="${placeholder}" ${disabled?"disabled":""} style="width:100%">`; }
-function sel(id, val, options) { return `<select id="${id}" style="width:100%">${options.map(o=>`<option value="${o}" ${val===o?"selected":""}>${o}</option>`).join("")}</select>`; }
-function ta(id, val, placeholder, minH=80) { return `<textarea id="${id}" placeholder="${placeholder}" style="min-height:${minH}px;width:100%">${(val||"").replace(/</g,"&lt;")}</textarea>`; }
+    // ─── API HELPERS ──────────────────────────────────────────
+    async function callClaude(messages, system, maxTokens = 1500) {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+      return data.content?.[0]?.text || "";
+    }
 
-const STEPS = ["Personal","Summary","Education","Experience","Projects","Skills","Achievements","Template"];
-const TEMPLATES = [
-  {id:"minimal",name:"Minimal",color:"#1e293b",desc:"Clean serif, max ATS"},
-  {id:"modern",name:"Modern",color:"#2563EB",desc:"Bold blue accents"},
-  {id:"corporate",name:"Corporate",color:"#1e3a5f",desc:"Two-column sidebar"},
-  {id:"google",name:"Google Style",color:"#4285F4",desc:"Clean sans-serif"},
-  {id:"harvard",name:"Harvard",color:"#A51C30",desc:"Academic tradition"},
-  {id:"executive",name:"Executive",color:"#0f172a",desc:"Senior-level authority"}
-];
+    async function callClaudeWithImage(base64, mimeType, prompt, system) {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 2000,
+          system,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
+              { type: "text", text: prompt }
+            ]
+          }]
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+      return data.content?.[0]?.text || "";
+    }
 
-function renderLanding() {
-  return `<div style="min-height:100vh;background:#F8FAFC">
-    <nav style="display:flex;justify-content:space-between;align-items:center;padding:14px 40px;background:#fff;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:99">
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="width:34px;height:34px;background:linear-gradient(135deg,#2563EB,#06B6D4);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px">⚡</div>
-        <span style="font-weight:900;font-size:19px;color:#1e293b;letter-spacing:-0.5px">Resu<span style="color:#2563EB">nex</span></span>
-      </div>
-      <div style="display:flex;gap:8px">${btn("Upload CV","btn-upload-nav","ghost","sm")}${btn("⚡ Create CV","btn-create-nav","primary","sm")}</div>
-    </nav>
-    <div style="text-align:center;padding:72px 24px 52px;max-width:800px;margin:0 auto">
-      <div style="display:inline-flex;align-items:center;gap:8px;background:#EFF6FF;border:1px solid #bfdbfe;border-radius:20px;padding:5px 14px;font-size:12px;color:#2563EB;font-weight:600;margin-bottom:22px">✨ Zero fees &nbsp;·&nbsp; No signup &nbsp;·&nbsp; AI-powered</div>
-      <h1 style="font-size:clamp(30px,5vw,54px);font-weight:900;color:#0f172a;line-height:1.15;letter-spacing:-1.5px;margin-bottom:18px">Create your CV in minutes —<br><span style="background:linear-gradient(135deg,#2563EB,#06B6D4);-webkit-background-clip:text;-webkit-text-fill-color:transparent">100% free, always.</span></h1>
-      <p style="font-size:18px;color:#64748b;margin-bottom:10px;line-height:1.7;font-weight:500">No charge when downloading. No hidden fees. No account needed.</p>
-      <p style="font-size:15px;color:#94a3b8;margin-bottom:36px;line-height:1.6">Upload your existing CV to auto-fill, or build from scratch with AI assistance.</p>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">${btn("⚡ Build My CV — Free","btn-scratch","primary","lg",false,"box-shadow:0 4px 20px rgba(37,99,235,.4)")}${btn("📄 Upload & Reformat CV","btn-upload","secondary","lg")}</div>
-    </div>
-    <div style="display:flex;justify-content:center;max-width:560px;margin:0 auto 52px;background:#fff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.06)">
-      ${[["5,000+","CVs Created"],["98%","ATS Score"],["100%","Free to Download"]].map(([n,l],i)=>`<div style="flex:1;padding:22px 16px;text-align:center;${i<2?"border-right:1px solid #e2e8f0":""}"><div style="font-size:26px;font-weight:800;color:#2563EB;margin-bottom:4px">${n}</div><div style="font-size:12px;color:#64748b;font-weight:500">${l}</div></div>`).join("")}
-    </div>
-    <div style="max-width:940px;margin:0 auto 52px;padding:0 24px">
-      <h2 style="text-align:center;font-size:26px;font-weight:700;color:#0f172a;margin-bottom:8px">Everything you need</h2>
-      <p style="text-align:center;color:#64748b;margin-bottom:28px">Professional tools, zero cost</p>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px">
-        ${[["🎯","ATS Optimized","Beat every applicant tracking system"],["🤖","AI Writing","Generate & improve with one click"],["📄","CV Scanner","Upload PDF, Word or image — AI extracts everything"],["⚡","Instant PDF","Download clean, selectable PDFs"],["🎨","6 Templates","Minimal to Executive styles"],["♾️","Unlimited","No caps on resumes or downloads"]].map(([icon,t,d])=>`<div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:18px"><div style="font-size:22px;margin-bottom:8px">${icon}</div><h3 style="font-weight:600;color:#0f172a;margin-bottom:5px;font-size:14px">${t}</h3><p style="font-size:13px;color:#64748b;line-height:1.6">${d}</p></div>`).join("")}
-      </div>
-    </div>
-    <div style="background:#fff;border-top:1px solid #e2e8f0;padding:52px 24px">
-      <div style="max-width:760px;margin:0 auto;text-align:center">
-        <h2 style="font-size:26px;font-weight:700;color:#0f172a;margin-bottom:6px">Two ways to start</h2>
-        <p style="color:#64748b;margin-bottom:36px">Both are free, both take under 2 minutes</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:600px;margin:0 auto">
-          <div style="background:#EFF6FF;border:2px solid #bfdbfe;border-radius:16px;padding:24px;text-align:center">
-            <div style="font-size:36px;margin-bottom:12px">✏️</div>
-            <h3 style="font-weight:700;color:#1e293b;margin-bottom:8px">Build from Scratch</h3>
-            <p style="font-size:13px;color:#64748b;margin-bottom:16px;line-height:1.6">Fill in a guided form step by step. AI helps write your summary and improve bullet points.</p>
-            ${btn("Start Building — Free","btn-scratch2","primary","sm",false,"width:100%;justify-content:center")}
+    async function callClaudeWithText(text, system) {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 2000,
+          system,
+          messages: [{ role: "user", content: `Here is the full text extracted from a resume. Parse it into structured JSON:\n\n${text}` }]
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+      return data.content?.[0]?.text || "";
+    }
+
+    // ─── FILE PROCESSING HELPERS ────────────────────────────────
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function fileToArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    async function extractDocxText(file) {
+      const arrayBuffer = await fileToArrayBuffer(file);
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      return result.value || "";
+    }
+
+    async function pdfToBase64Image(file) {
+      if (typeof pdfjsLib === "undefined") {
+        throw new Error("PDF processing library (pdfjsLib) failed to load.");
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      const arrayBuffer = await fileToArrayBuffer(file);
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const totalPages = Math.min(pdfDoc.numPages, 3);
+      const canvases = [];
+      let totalHeight = 0, maxWidth = 0;
+
+      for (let i = 1; i <= totalPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+        canvases.push(canvas);
+        totalHeight += viewport.height;
+        maxWidth = Math.max(maxWidth, viewport.width);
+      }
+
+      const merged = document.createElement("canvas");
+      merged.width = maxWidth;
+      merged.height = totalHeight;
+      const ctx = merged.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, maxWidth, totalHeight);
+
+      let y = 0;
+      for (const c of canvases) { 
+        ctx.drawImage(c, 0, y); 
+        y += c.height; 
+      }
+      return merged.toDataURL("image/jpeg", 0.92).split(",")[1];
+    }
+
+    async function extractPdfText(file) {
+      if (typeof pdfjsLib === "undefined") {
+        throw new Error("PDF processing library (pdfjsLib) failed to load.");
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      const arrayBuffer = await fileToArrayBuffer(file);
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const totalPages = Math.min(pdfDoc.numPages, 5);
+      let fullText = "";
+      for (let i = 1; i <= totalPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(" ") + "\n";
+      }
+      return fullText.trim();
+    }
+
+    function atsScore(d) {
+      let s = 0, t = 0;
+      const a = (v, p) => { t += p; if (v) s += p; };
+      a(d.personal?.firstName && d.personal?.lastName, 5);
+      a(d.personal?.email, 5); 
+      a(d.personal?.phone, 5); 
+      a(d.personal?.linkedin, 3);
+      a(d.summary?.length > 80, 15);
+      a(d.experience?.some(e => e.company), 20);
+      a(d.experience?.some(e => e.resp?.length > 40), 10);
+      a(d.education?.some(e => e.college), 10);
+      a(d.skills?.technical?.length > 2, 10);
+      a(d.projects?.some(p => p.name), 7);
+      a(d.achievements?.awards || d.achievements?.hackathons, 5);
+      a(d.skills?.certifications?.length > 0, 5);
+      return Math.round((s / t) * 100) || 0;
+    }
+
+    function blankData() {
+      return {
+        personal: { firstName: "", lastName: "", email: "", phone: "", city: "", state: "", country: "", linkedin: "", github: "", portfolio: "" },
+        summary: "",
+        education: [{ id: 1, college: "", degree: "", spec: "", cgpa: "", from: "", to: "", desc: "" }],
+        experience: [{ id: 1, company: "", title: "", type: "Full-time", location: "", from: "", to: "", current: false, resp: "" }],
+        projects: [{ id: 1, name: "", desc: "", tech: "", github: "", live: "" }],
+        skills: { technical: [], soft: [], languages: [], certifications: [] },
+        achievements: { awards: "", hackathons: "", publications: "", patents: "" },
+        template: "minimal"
+      };
+    }
+
+    // ─── STATE MANAGEMENT ────────────────────────────────────────
+    let state = {
+      page: "landing",
+      step: 0,
+      data: blankData(),
+      aiLoading: {},
+      toast: null,
+      preview: false,
+      uploadProgress: null,
+      uploadMessage: ""
+    };
+
+    function setState(patch) { 
+      state = { ...state, ...patch }; 
+      render(); 
+    }
+
+    function updData(path, val) {
+      const n = JSON.parse(JSON.stringify(state.data));
+      const keys = path.split(".");
+      let cur = n;
+      for (let i = 0; i < keys.length - 1; i++) cur = cur[keys[i]];
+      cur[keys[keys.length - 1]] = val;
+      state.data = n; 
+      render();
+    }
+
+    let toastTimer = null;
+    function showToast(msg, type = "ok") {
+      if (toastTimer) clearTimeout(toastTimer);
+      state.toast = { msg, type }; 
+      render();
+      toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
+    }
+
+    // ─── FILE UPLOAD PROCESSOR ──────────────────────────────────
+    async function handleFileUpload(file) {
+      if (!file) return;
+      setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
+
+      const systemPrompt = `You are a resume parsing assistant. Extract candidate information into raw JSON with this exact schema:
+      {
+        "personal": { "firstName": "", "lastName": "", "email": "", "phone": "", "city": "", "state": "", "country": "", "linkedin": "", "github": "", "portfolio": "" },
+        "summary": "",
+        "education": [{ "college": "", "degree": "", "spec": "", "cgpa": "", "from": "", "to": "", "desc": "" }],
+        "experience": [{ "company": "", "title": "", "type": "Full-time", "location": "", "from": "", "to": "", "current": false, "resp": "" }],
+        "projects": [{ "name": "", "desc": "", "tech": "", "github": "", "live": "" }],
+        "skills": { "technical": [], "soft": [], "languages": [], "certifications": [] },
+        "achievements": { "awards": "", "hackathons": "", "publications": "", "patents": "" }
+      }`;
+
+      try {
+        let jsonStr = "";
+        const fileType = file.name.split('.').pop().toLowerCase();
+
+        if (fileType === "pdf") {
+          setState({ uploadProgress: 40, uploadMessage: "Rendering PDF pages..." });
+          try {
+            const rawText = await extractPdfText(file);
+            if (rawText && rawText.length > 100) {
+              setState({ uploadProgress: 60, uploadMessage: "Analyzing text structure..." });
+              jsonStr = await callClaudeWithText(rawText, systemPrompt);
+            } else {
+              throw new Error("Text layer empty, switching to OCR...");
+            }
+          } catch (e) {
+            setState({ uploadProgress: 50, uploadMessage: "Processing scanned image..." });
+            const base64Img = await pdfToBase64Image(file);
+            setState({ uploadProgress: 75, uploadMessage: "AI visual extraction..." });
+            jsonStr = await callClaudeWithImage(base64Img, "image/jpeg", "Extract structured JSON from this resume image.", systemPrompt);
+          }
+        } else if (fileType === "docx") {
+          setState({ uploadProgress: 50, uploadMessage: "Extracting Word document..." });
+          const text = await extractDocxText(file);
+          setState({ uploadProgress: 75, uploadMessage: "Parsing data with AI..." });
+          jsonStr = await callClaudeWithText(text, systemPrompt);
+        } else if (["jpg", "jpeg", "png", "webp"].includes(fileType)) {
+          setState({ uploadProgress: 50, uploadMessage: "Encoding image..." });
+          const base64 = await fileToBase64(file);
+          const mime = file.type || `image/${fileType}`;
+          setState({ uploadProgress: 75, uploadMessage: "Parsing visual data..." });
+          jsonStr = await callClaudeWithImage(base64, mime, "Extract JSON from resume image.", systemPrompt);
+        } else {
+          throw new Error("Unsupported file format.");
+        }
+
+        setState({ uploadProgress: 90, uploadMessage: "Structuring resume..." });
+        
+        // Clean markdown code blocks if any remain
+        jsonStr = jsonStr.replace(/```json/gi, "").replace(/```/g, "").trim();
+        const parsed = JSON.parse(jsonStr);
+
+        setState({
+          data: { ...blankData(), ...parsed },
+          page: "builder",
+          uploadProgress: null,
+          uploadMessage: ""
+        });
+        showToast("Resume parsed successfully!");
+
+      } catch (err) {
+        console.error("Upload error:", err);
+        setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` });
+      }
+    }
+
+    // ─── RENDER ENGINE ──────────────────────────────────────────
+    function render() {
+      const app = document.getElementById("app");
+      const backBtn = document.getElementById("backBtn");
+      
+      backBtn.classList.toggle("hidden", state.page === "landing");
+
+      // Toast UI
+      const toastEl = document.getElementById("toast");
+      if (state.toast) {
+        toastEl.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm flex items-center gap-2 ${
+          state.toast.type === "ok" ? "bg-emerald-600" : "bg-red-600"
+        }`;
+        toastEl.innerHTML = state.toast.msg;
+        toastEl.classList.remove("hidden");
+      } else {
+        toastEl.classList.add("hidden");
+      }
+
+      // Page Router
+      if (state.page === "landing") {
+        app.innerHTML = `
+          <div class="text-center py-16 max-w-3xl mx-auto space-y-6">
+            <span class="bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1 rounded-full border border-blue-100">✨ Zero fees · No signup · AI-powered</span>
+            <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
+              Create your CV in minutes — <span class="text-blue-600">100% free, always.</span>
+            </h1>
+            <p class="text-slate-600 text-lg">Upload your existing CV to auto-fill, or build from scratch with AI assistance.</p>
+            <div class="flex items-center justify-center gap-4 pt-4">
+              <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3.5 rounded-xl shadow-md transition-all">
+                ⚡ Build My CV — Free
+              </button>
+              <button onclick="setState({ page: 'upload' })" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-6 py-3.5 rounded-xl transition-all">
+                📄 Upload & Reformat CV
+              </button>
+            </div>
           </div>
-          <div style="background:#F0FDF4;border:2px solid #bbf7d0;border-radius:16px;padding:24px;text-align:center">
-            <div style="font-size:36px;margin-bottom:12px">📄</div>
-            <h3 style="font-weight:700;color:#1e293b;margin-bottom:8px">Upload Your CV</h3>
-            <p style="font-size:13px;color:#64748b;margin-bottom:16px;line-height:1.6">Upload a PDF, Word (.docx), or image. AI scans and extracts all details automatically.</p>
-            ${btn("Upload CV","btn-upload2","secondary","sm",false,"width:100%;justify-content:center;background:#fff")}
+        `;
+      } else if (state.page === "upload") {
+        app.innerHTML = `
+          <div class="max-w-2xl mx-auto w-full space-y-6">
+            <div class="text-center space-y-2">
+              <h2 class="text-3xl font-bold text-slate-900">Upload Your CV</h2>
+              <p class="text-slate-500 text-sm">Upload your resume and AI will extract all your details automatically.</p>
+            </div>
+
+            <div id="dropZone" class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/50 rounded-2xl p-10 text-center transition-all cursor-pointer">
+              <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" class="hidden" onchange="handleFileUpload(this.files[0])"/>
+              <div onclick="document.getElementById('fileInput').click()" class="space-y-4">
+                <div class="w-16 h-16 bg-white rounded-full shadow-sm mx-auto flex items-center justify-center text-blue-600">☁️</div>
+                <div>
+                  <p class="font-semibold text-slate-700">Drag & drop your resume here</p>
+                  <p class="text-xs text-slate-400 mt-1">or click the button below to browse</p>
+                </div>
+                <div class="flex items-center justify-center gap-2 text-xs text-slate-500">
+                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">📄 PDF</span>
+                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">📝 Word (.docx)</span>
+                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">🖼️ JPG / PNG</span>
+                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">☕ WEBP</span>
+                </div>
+                <button type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all">
+                  📁 Choose File
+                </button>
+              </div>
+            </div>
+
+            ${state.uploadMessage ? `
+              <p class="text-center text-sm font-medium ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-blue-600'}">
+                ${state.uploadMessage}
+              </p>
+            ` : ''}
           </div>
-        </div>
-      </div>
-    </div>
-    <div style="text-align:center;padding:52px 24px;background:linear-gradient(135deg,#1e3a8a,#2563EB)">
-      <h2 style="font-size:28px;font-weight:800;color:#fff;margin-bottom:10px">Your CV. Your career. Zero cost.</h2>
-      <p style="color:#93c5fd;margin-bottom:6px;font-size:16px;font-weight:500">Create, download, and share — 100% free. No charge at any step.</p>
-      <p style="color:#60a5fa;margin-bottom:28px;font-size:13px">No account needed · No watermark · No download fee</p>
-      ${btn("⚡ Create My CV — It's Free","btn-cta","white","lg")}
-    </div>
-    <div style="text-align:center;padding:18px;color:#94a3b8;font-size:12px;background:#fff;border-top:1px solid #e2e8f0">© 2025 Resunex · 100% Free · No charge to download · No account needed</div>
-  </div>`;
-}
+        `;
+      } else if (state.page === "builder") {
+        app.innerHTML = `
+          <div class="max-w-4xl mx-auto w-full bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h2 class="text-2xl font-bold text-slate-900">Resume Builder</h2>
+                <p class="text-xs text-slate-500">Fill in your information or review parsed details.</p>
+              </div>
+              <div class="bg-emerald-50 text-emerald-700 font-semibold text-sm px-3 py-1.5 rounded-xl border border-emerald-200">
+                ATS Score: ${atsScore(state.data)}%
+              </div>
+            </div>
 
-function renderUpload() {
-  const prog = state.uploadProgress;
-  return `<div style="min-height:100vh;background:#F8FAFC">
-    <nav style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#fff;border-bottom:1px solid #e2e8f0;position:sticky;top:0;z-index:99">
-      <div style="display:flex;align-items:center;gap:10px">
-        <button id="btn-back-upload" style="background:none;border:1px solid #e2e8f0;border-radius:7px;padding:5px 12px;font-size:13px;color:#64748b;cursor:pointer">← Back</button>
-        <span style="font-weight:900;font-size:17px;color:#1e293b;letter-spacing:-0.5px">Resu<span style="color:#2563EB">nex</span></span>
-      </div>
-    </nav>
-    <div style="max-width:640px;margin:48px auto;padding:0 24px">
-      <div style="text-align:center;margin-bottom:36px">
-        <div style="font-size:48px;margin-bottom:12px">📄</div>
-        <h1 style="font-size:28px;font-weight:800;color:#0f172a;margin-bottom:8px">Upload Your CV</h1>
-        <p style="color:#64748b;font-size:15px;line-height:1.7">Upload your resume and AI will extract all your details automatically.</p>
-      </div>
-      ${!prog||prog==="error"?`
-      <div id="drop-zone" style="border:2.5px dashed #93c5fd;border-radius:16px;padding:44px 24px;text-align:center;background:#EFF6FF;cursor:pointer;transition:all .2s">
-        <div style="font-size:40px;margin-bottom:12px">☁️</div>
-        <p style="font-weight:700;color:#1d4ed8;font-size:17px;margin-bottom:6px">Drag & drop your resume here</p>
-        <p style="color:#64748b;font-size:13px;margin-bottom:20px">or click the button below to browse</p>
-        <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin-bottom:20px">
-          <span style="background:#fff;border:1.5px solid #bfdbfe;color:#1d4ed8;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600">📄 PDF</span>
-          <span style="background:#fff;border:1.5px solid #bfdbfe;color:#1d4ed8;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600">📝 Word (.docx)</span>
-          <span style="background:#fff;border:1.5px solid #bfdbfe;color:#1d4ed8;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600">🖼 JPG / PNG</span>
-          <span style="background:#fff;border:1.5px solid #bfdbfe;color:#1d4ed8;border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600">🗃 WEBP</span>
-        </div>
-        <input type="file" id="cv-file-input" accept=".pdf,.doc,.docx,image/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="display:none">
-        ${btn("📂 Choose File","btn-choose-file","primary","md")}
-        ${prog==="error"?`<p style="color:#dc2626;font-size:13px;margin-top:16px;font-weight:500">❌ ${state.uploadMessage||"Error reading file. Try again."}</p>`:""}
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px">
-        <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:16px;text-align:center"><div style="font-size:28px;margin-bottom:8px">📄</div><p style="font-weight:600;font-size:13px;color:#1e293b;margin-bottom:4px">PDF Resume</p><p style="font-size:12px;color:#64748b">Text extracted directly for highest accuracy</p></div>
-        <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:16px;text-align:center"><div style="font-size:28px;margin-bottom:8px">📝</div><p style="font-weight:600;font-size:13px;color:#1e293b;margin-bottom:4px">Word Document</p><p style="font-size:12px;color:#64748b">.docx files fully supported</p></div>
-        <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:16px;text-align:center"><div style="font-size:28px;margin-bottom:8px">🖼</div><p style="font-weight:600;font-size:13px;color:#1e293b;margin-bottom:4px">Image / Photo</p><p style="font-size:12px;color:#64748b">JPG, PNG, WEBP supported</p></div>
-      </div>
-      <div style="margin-top:16px;background:#FFFBEB;border-radius:12px;border:1px solid #fde68a;padding:14px 16px">
-        <h3 style="font-weight:600;font-size:13px;color:#92400e;margin-bottom:8px">💡 Tips for best results</h3>
-        <div style="font-size:12px;color:#78350f;line-height:1.9">✅ Use a digital PDF for most accurate extraction<br>✅ For Word docs, save as .docx (not .doc)<br>✅ For images, ensure text is clear and not blurry<br>✅ Max recommended file size: 10 MB</div>
-      </div>`:`
-      <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:40px;text-align:center">
-        ${prog==="done"?`
-          <div style="font-size:52px;margin-bottom:16px">✅</div>
-          <h2 style="font-size:22px;font-weight:700;color:#0f172a;margin-bottom:8px">Resume Scanned!</h2>
-          <p style="color:#64748b;margin-bottom:24px;line-height:1.7">All your details have been extracted. Review and edit them in the builder.</p>
-          ${btn("✏️ Review & Edit in Builder →","btn-go-builder","primary","lg",false,"width:100%;justify-content:center")}`:`
-          <div style="width:56px;height:56px;border:4px solid #bfdbfe;border-top-color:#2563EB;border-radius:50%;margin:0 auto 20px;animation:spin .8s linear infinite"></div>
-          <h2 style="font-size:20px;font-weight:700;color:#0f172a;margin-bottom:8px">${prog==="reading"?"Reading your file...":"AI is scanning your resume..."}</h2>
-          <p style="color:#64748b;font-size:14px">${prog==="reading"?"Extracting content from your document...":"Identifying name, experience, education, skills and more..."}</p>
-          ${prog==="scanning"?`<div style="margin-top:20px;display:flex;flex-direction:column;gap:8px;text-align:left;max-width:300px;margin-left:auto;margin-right:auto">
-            ${["Detecting personal details","Reading work experience","Extracting education","Identifying skills"].map((s,i)=>`<div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#64748b"><span style="width:18px;height:18px;border-radius:50%;background:#EFF6FF;border:2px solid #bfdbfe;display:inline-flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;animation:pulse 1.4s ease ${i*0.3}s infinite">•</span>${s}</div>`).join("")}
-          </div><p style="color:#94a3b8;font-size:12px;margin-top:16px">Usually takes 10–20 seconds...</p>`:""}
-        `}
-      </div>`}
-    </div>
-  </div>`;
-}
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">First Name</label>
+                <input type="text" value="${state.data.personal.firstName || ''}" onchange="updData('personal.firstName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Last Name</label>
+                <input type="text" value="${state.data.personal.lastName || ''}" onchange="updData('personal.lastName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                <input type="email" value="${state.data.personal.email || ''}" onchange="updData('personal.email', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Phone</label>
+                <input type="text" value="${state.data.personal.phone || ''}" onchange="updData('personal.phone', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Professional Summary</label>
+                <textarea rows="3" onchange="updData('summary', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">${state.data.summary || ''}</textarea>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
 
-function renderStepContent() {
-  const d = state.data;
-  const al = state.aiLoading;
-  if (state.step===0) {
-    const p = d.personal;
-    return `<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Personal Information</h2>
-    <p style="color:#64748b;font-size:14px;margin-bottom:20px">Your contact details appear at the top of your resume</p>
-    ${card(`<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${field("First Name",inp("p-firstName",p.firstName,"Rahul"))}${field("Last Name",inp("p-lastName",p.lastName,"Sharma"))}${field("Email",inp("p-email",p.email,"rahul@email.com","email"))}${field("Phone",inp("p-phone",p.phone,"+91 9876543210"))}${field("City",inp("p-city",p.city,"Bangalore"))}${field("State",inp("p-state",p.state,"Karnataka"))}${field("Country",inp("p-country",p.country,"India"))}</div>`)}
-    <div style="height:12px"></div>
-    ${card(`<h3 style="font-weight:600;font-size:14px;margin-bottom:14px">Online Profiles</h3>${field("LinkedIn URL",inp("p-linkedin",p.linkedin,"linkedin.com/in/yourname"))}${field("GitHub URL",inp("p-github",p.github,"github.com/username"))}${field("Portfolio",inp("p-portfolio",p.portfolio,"yoursite.com"))}`)}`;
-  }
-  if (state.step===1) {
-    return `<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Professional Summary</h2>
-    <p style="color:#64748b;font-size:14px;margin-bottom:20px">A compelling summary boosts interview callbacks by 40%</p>
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <button id="sum-mode-manual" style="flex:1;padding:9px;border-radius:8px;border:1.5px solid ${state.summaryMode!=="ai"?"#2563EB":"#e2e8f0"};cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;background:${state.summaryMode!=="ai"?"#EFF6FF":"#fff"};color:${state.summaryMode!=="ai"?"#2563EB":"#64748b"}">✏️ Write Manually</button>
-      <button id="sum-mode-ai" style="flex:1;padding:9px;border-radius:8px;border:1.5px solid ${state.summaryMode==="ai"?"#2563EB":"#e2e8f0"};cursor:pointer;font-family:inherit;font-size:13px;font-weight:500;background:${state.summaryMode==="ai"?"#EFF6FF":"#fff"};color:${state.summaryMode==="ai"?"#2563EB":"#64748b"}">🤖 Generate with AI</button>
-    </div>
-    ${state.summaryMode==="ai"?card(`
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">${field("Experience Level",sel("sum-level",state.sumLevel||"1–3 years",["0–1 years","1–3 years","3–5 years","5–10 years","10+ years"]))}${field("Industry",sel("sum-industry",state.sumIndustry||"Software Engineering",["Software Engineering","IT","Finance","Healthcare","Marketing","Data Analytics","HR","Sales","Education","Legal"]))}</div>
-      <label>Keywords (click to add)</label>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px">${["Python","React","SQL","Node.js","AWS","ML","Power BI","Java","Azure","Docker","TypeScript","MongoDB","Leadership","Agile"].map(k=>`<button class="kw-btn" data-kw="${k}" style="padding:3px 9px;border-radius:20px;border:1.5px solid ${(state.sumKeywords||[]).includes(k)?"#2563EB":"#e2e8f0"};cursor:pointer;font-size:11px;font-family:inherit;background:${(state.sumKeywords||[]).includes(k)?"#EFF6FF":"#fff"};color:${(state.sumKeywords||[]).includes(k)?"#2563EB":"#64748b"}">${k}</button>`).join("")}</div>
-      ${btn(al.genSum?'<span style="width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;display:inline-block;animation:spin .6s linear infinite"></span> Generating...':'✨ Generate AI Summary',"btn-gen-sum","primary","md",!!al.genSum,"width:100%;justify-content:center")}
-    `,"margin-bottom:14px"):""}
-    ${card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><label style="margin:0;font-size:14px;font-weight:600">Your Summary</label>${btn(al.enhSum?"Enhancing...":"✨ Enhance with AI","btn-enh-sum","ghost","sm",!!al.enhSum)}</div>${ta("sum-text",d.summary,"A results-driven software engineer with 3+ years of experience...",120)}<p style="font-size:11px;color:#94a3b8;margin-top:5px">${(d.summary||"").length} chars · aim for 150–250</p>`)}`;
-  }
-  if (state.step===2) {
-    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div><h2 style="font-size:20px;font-weight:700">Education</h2><p style="color:#64748b;font-size:14px;margin-top:4px">Add your academic qualifications</p></div>${btn("+ Add","btn-add-edu","secondary","sm")}</div>
-    ${d.education.map((e,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-weight:600;font-size:14px">Education ${i+1}</span>${d.education.length>1?btn("Remove",`btn-del-edu-${e.id}`,"danger","sm"):""}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${field("College / University",inp(`edu-college-${e.id}`,e.college,"IIT Bombay"))}${field("Degree",inp(`edu-degree-${e.id}`,e.degree,"B.Tech"))}${field("Specialization",inp(`edu-spec-${e.id}`,e.spec,"Computer Science"))}${field("CGPA / %",inp(`edu-cgpa-${e.id}`,e.cgpa,"8.5"))}${field("Start",inp(`edu-from-${e.id}`,e.from,"","month"))}${field("End",inp(`edu-to-${e.id}`,e.to,"","month"))}</div>${field("Description",ta(`edu-desc-${e.id}`,e.desc,"Relevant coursework, achievements...",60))}`,"margin-bottom:14px")).join("")}`;
-  }
-  if (state.step===3) {
-    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div><h2 style="font-size:20px;font-weight:700">Work Experience</h2><p style="color:#64748b;font-size:14px;margin-top:4px">Most recent role first</p></div>${btn("+ Add Role","btn-add-exp","secondary","sm")}</div>
-    ${d.experience.map((e,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-weight:600;font-size:14px">Position ${i+1}</span>${d.experience.length>1?btn("Remove",`btn-del-exp-${e.id}`,"danger","sm"):""}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${field("Company",inp(`exp-company-${e.id}`,e.company,"Google"))}${field("Job Title",inp(`exp-title-${e.id}`,e.title,"Software Engineer"))}${field("Type",sel(`exp-type-${e.id}`,e.type,["Full-time","Part-time","Internship","Contract","Freelance"]))}${field("Location",inp(`exp-loc-${e.id}`,e.location,"Bangalore, India"))}${field("Start",inp(`exp-from-${e.id}`,e.from,"","month"))}${field("End",e.current?inp(`exp-to-${e.id}`,"Present","","text",true):inp(`exp-to-${e.id}`,e.to,"","month"))}</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><input type="checkbox" id="exp-cur-${e.id}" ${e.current?"checked":""} style="width:auto"><label for="exp-cur-${e.id}" style="margin:0;font-size:13px;cursor:pointer">Currently working here</label></div>${field("Responsibilities & Achievements",`<div style="position:relative">${ta(`exp-resp-${e.id}`,e.resp,"• Led development of features used by 500k+ users\n• Reduced load time by 35%...",100)}${btn(al[`expAI-${e.id}`]?"...":"✨ AI Enhance",`btn-exp-ai-${e.id}`,"primary","sm",!!al[`expAI-${e.id}`],"position:absolute;top:8px;right:8px;font-size:11px;padding:4px 9px")}</div>`)}`,"margin-bottom:14px")).join("")}`;
-  }
-  if (state.step===4) {
-    return `<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px"><div><h2 style="font-size:20px;font-weight:700">Projects</h2><p style="color:#64748b;font-size:14px;margin-top:4px">Showcase 2–3 of your best projects</p></div>${btn("+ Add","btn-add-proj","secondary","sm")}</div>
-    ${d.projects.map((p,i)=>card(`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-weight:600;font-size:14px">Project ${i+1}</span>${d.projects.length>1?btn("Remove",`btn-del-proj-${p.id}`,"danger","sm"):""}</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">${field("Project Name",inp(`proj-name-${p.id}`,p.name,"E-Commerce Platform"))}${field("Technologies",inp(`proj-tech-${p.id}`,p.tech,"React, Node.js, MongoDB"))}${field("GitHub",inp(`proj-github-${p.id}`,p.github,"github.com/user/project"))}${field("Live URL",inp(`proj-live-${p.id}`,p.live,"myproject.com"))}</div>${field("Description",ta(`proj-desc-${p.id}`,p.desc,"Built a full-stack platform with real-time search and payments.",70))}`,"margin-bottom:14px")).join("")}`;
-  }
-  if (state.step===5) {
-    const TECH=["Python","JavaScript","React","Node.js","SQL","Java","TypeScript","AWS","Azure","Docker","ML","TensorFlow","Power BI","Git","MongoDB","PostgreSQL","C++","Go","Flutter"];
-    const SOFT=["Leadership","Communication","Problem Solving","Teamwork","Critical Thinking","Time Management","Adaptability","Creativity","Project Management"];
-    const LANGS=["English","Hindi","Spanish","French","German","Mandarin","Arabic","Japanese","Russian"];
-    const cats=[{k:"technical",l:"Technical Skills",p:TECH},{k:"soft",l:"Soft Skills",p:SOFT},{k:"languages",l:"Languages",p:LANGS},{k:"certifications",l:"Certifications",p:[]}];
-    return `<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Skills</h2>
-    <p style="color:#64748b;font-size:14px;margin-bottom:20px">Match keywords from the job description for better ATS scoring</p>
-    ${cats.map(({k,l,p})=>card(`<h3 style="font-weight:600;font-size:14px;margin-bottom:10px">${l}</h3>${p.length>0?`<p style="font-size:11px;color:#94a3b8;margin-bottom:6px">Quick add:</p><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">${p.map(s=>`<button class="skill-preset" data-cat="${k}" data-skill="${s}" style="padding:3px 8px;border-radius:20px;border:1px solid ${(d.skills[k]||[]).includes(s)?"#16a34a":"#e2e8f0"};cursor:pointer;font-size:11px;font-family:inherit;background:${(d.skills[k]||[]).includes(s)?"#dcfce7":"#fff"};color:${(d.skills[k]||[]).includes(s)?"#16a34a":"#64748b"}">${(d.skills[k]||[]).includes(s)?"✓ ":""}${s}</button>`).join("")}</div>`:""}<div style="display:flex;gap:8px;margin-bottom:10px"><input id="skill-inp-${k}" placeholder="Type and press Enter or click Add" style="flex:1">${btn("Add",`btn-add-skill-${k}`,"secondary","sm")}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${(d.skills[k]||[]).map(s=>`<span style="display:inline-flex;align-items:center;gap:4px;background:#EFF6FF;color:#1d4ed8;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500">${s} <button class="skill-remove" data-cat="${k}" data-skill="${s}" style="background:none;color:#93c5fd;font-size:15px;line-height:1;padding:0 1px;font-weight:700">×</button></span>`).join("")}</div>`,"margin-bottom:14px")).join("")}`;
-  }
-  if (state.step===6) {
-    const ach=d.achievements;
-    return `<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Achievements</h2>
-    <p style="color:#64748b;font-size:14px;margin-bottom:20px">Stand out with notable accomplishments</p>
-    ${card([field("Awards & Honors",ta("ach-awards",ach.awards,"Employee of the Year 2023...",65)),field("Hackathons & Competitions",ta("ach-hackathons",ach.hackathons,"1st place, Smart India Hackathon 2023...",65)),field("Publications",ta("ach-publications",ach.publications,"IEEE paper on ML optimization...",65)),field("Patents",ta("ach-patents",ach.patents,"Patent pending: Novel algorithm for...",65))].join(""))}`;
-  }
-  if (state.step===7) {
-    return `<h2 style="font-size:20px;font-weight:700;margin-bottom:6px">Choose Template</h2>
-    <p style="color:#64748b;font-size:14px;margin-bottom:20px">All templates are ATS-compatible</p>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px;margin-bottom:16px">
-      ${TEMPLATES.map(t=>`<div class="template-pick" data-tmpl="${t.id}" style="border-radius:12px;border:2px solid ${d.template===t.id?"#2563EB":"#e2e8f0"};overflow:hidden;cursor:pointer;background:#fff;box-shadow:${d.template===t.id?"0 0 0 4px rgba(37,99,235,.12)":"none"};transition:all .2s"><div style="height:70px;background:${t.color};display:flex;align-items:center;justify-content:center"><div style="background:rgba(255,255,255,.9);border-radius:4px;padding:5px 10px;font-size:11px;color:#1e293b;font-weight:600;text-align:center">${t.name}<br><span style="font-weight:400;font-size:10px;color:#64748b">Preview</span></div></div><div style="padding:10px 12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px"><span style="font-weight:600;font-size:13px">${t.name}</span>${d.template===t.id?`<span style="font-size:11px;color:#2563EB;font-weight:700">✓</span>`:""}</div><p style="font-size:11px;color:#64748b">${t.desc}</p></div></div>`).join("")}
-    </div>
-    <div style="background:#EFF6FF;border-radius:10px;padding:12px 16px;border:1px solid #bfdbfe"><p style="font-size:13px;color:#1d4ed8;font-weight:500">🎯 ATS tip: "Minimal" has highest compatibility — no tables or columns.</p></div>`;
-  }
-}
-
-function renderBuilder() {
-  const d = state.data;
-  const score = atsScore(d);
-  const ScoreColor = score>=70?"#16a34a":score>=40?"#d97706":"#dc2626";
-  const ResumeHTML = (RESUME_MAP[d.template]||resumeMinimal)(d);
-  return `<div style="min-height:100vh;background:#F1F5F9;display:flex;flex-direction:column">
-    <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:11px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50">
-      <div style="display:flex;align-items:center;gap:10px">
-        <button id="btn-back-builder" style="background:none;border:1px solid #e2e8f0;border-radius:7px;padding:5px 12px;font-size:13px;color:#64748b;cursor:pointer">← Back</button>
-        <span style="font-weight:900;font-size:17px;color:#1e293b;letter-spacing:-0.5px">Resu<span style="color:#2563EB">nex</span></span>
-      </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="display:flex;align-items:center;gap:5px;background:#EFF6FF;border-radius:8px;padding:5px 12px"><span style="font-size:12px;color:#2563EB;font-weight:600">ATS:</span><span style="font-size:16px;font-weight:800;color:${ScoreColor}">${score}%</span></div>
-        ${btn(state.preview?"✏️ Edit":"👁 Preview","btn-toggle-preview","ghost","sm")}
-        ${btn("⬇ Download PDF","btn-download","primary","sm")}
-      </div>
-    </div>
-    <div style="background:#fff;border-bottom:1px solid #e2e8f0;padding:10px 20px">
-      <div style="display:flex;gap:3px;max-width:880px;margin:0 auto">
-        ${STEPS.map((s,i)=>`<button class="step-btn" data-step="${i}" style="flex:1;padding:6px 3px;border-radius:6px;border:none;cursor:pointer;font-family:inherit;font-size:10px;font-weight:${i===state.step?700:400};background:${i===state.step?"#EFF6FF":i<state.step?"#DCFCE7":"transparent"};color:${i===state.step?"#2563EB":i<state.step?"#16a34a":"#94a3b8"}">${i<state.step?"✓ ":""}${s}</button>`).join("")}
-      </div>
-      <div style="max-width:880px;margin:6px auto 0;background:#e2e8f0;border-radius:4px;height:3px"><div style="background:linear-gradient(90deg,#2563EB,#06B6D4);height:100%;border-radius:4px;width:${((state.step+1)/STEPS.length)*100}%;transition:width .3s ease"></div></div>
-    </div>
-    <div style="flex:1;display:flex;overflow:hidden">
-      <div style="flex:1;overflow:auto;padding:24px;${state.preview?"max-width:50%":"max-width:720px;margin:0 auto"}">
-        <div class="fade">${renderStepContent()}</div>
-        <div style="display:flex;justify-content:space-between;margin-top:24px;padding-top:18px;border-top:1px solid #e2e8f0">
-          ${btn("← Previous","btn-prev","ghost","md",state.step===0)}
-          ${state.step===STEPS.length-1?btn("⬇ Download PDF","btn-download2","primary","md"):btn("Next →","btn-next","primary","md")}
-        </div>
-      </div>
-      ${state.preview?`<div style="width:50%;background:#e2e8f0;border-left:1px solid #d1d5db;overflow:auto;padding:16px"><p style="font-size:12px;color:#64748b;margin-bottom:10px;font-weight:500">Live Preview — ${TEMPLATES.find(t=>t.id===d.template)?.name}</p><div style="background:#fff;border-radius:8px;box-shadow:0 2px 16px rgba(0,0,0,.12);overflow:hidden;transform:scale(0.72);transform-origin:top center;width:138%;margin-left:-19%">${ResumeHTML}</div></div>`:""}
-    </div>
-    ${state.toast?`<div style="position:fixed;bottom:22px;right:22px;background:${state.toast.type==="err"?"#fef2f2":"#f0fdf4"};border:1px solid ${state.toast.type==="err"?"#fca5a5":"#86efac"};border-radius:10px;padding:11px 16px;font-size:13px;color:${state.toast.type==="err"?"#dc2626":"#16a34a"};font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:200;animation:fadeIn .25s ease">${state.toast.type==="err"?"❌":"✅"} ${state.toast.msg}</div>`:""}
-  </div>`;
-}
-
-function render() {
-  const app = document.getElementById("app");
-  if (!app) return;
-  if (state.page==="landing") { app.innerHTML=renderLanding(); bindLanding(); }
-  else if (state.page==="upload") { app.innerHTML=renderUpload(); bindUpload(); }
-  else { app.innerHTML=renderBuilder(); bindBuilder(); }
-}
-
-function bindLanding() {
-  const go=id=>{const el=document.getElementById(id);if(el)el.onclick=()=>setState({page:"builder",step:0,data:blankData()});};
-  const up=id=>{const el=document.getElementById(id);if(el)el.onclick=()=>setState({page:"upload",uploadProgress:null});};
-  go("btn-create-nav");go("btn-scratch");go("btn-scratch2");go("btn-cta");
-  up("btn-upload-nav");up("btn-upload");up("btn-upload2");
-}
-
-function bindUpload() {
-  const back=document.getElementById("btn-back-upload");
-  if(back)back.onclick=()=>setState({page:"landing"});
-  const gob=document.getElementById("btn-go-builder");
-  if(gob)gob.onclick=()=>setState({page:"builder",step:0});
-  const chooseBtn=document.getElementById("btn-choose-file");
-  const fileInput=document.getElementById("cv-file-input");
-  const dropZone=document.getElementById("drop-zone");
-  if(chooseBtn&&fileInput){chooseBtn.onclick=()=>fileInput.click();fileInput.onchange=e=>handleFileUpload(e.target.files[0]);}
-  if(dropZone){
-    dropZone.ondragover=e=>{e.preventDefault();dropZone.style.background="#DBEAFE";};
-    dropZone.ondragleave=()=>{dropZone.style.background="#EFF6FF";};
-    dropZone.ondrop=e=>{e.preventDefault();dropZone.style.background="#EFF6FF";handleFileUpload(e.dataTransfer.files[0]);};
-  }
-}
-
-const RESUME_PARSE_SYSTEM=`You are an expert resume parser. Extract ALL information from the resume and return ONLY a valid JSON object with this exact structure, no other text, no markdown backticks:
-{"personal":{"firstName":"","lastName":"","email":"","phone":"","city":"","state":"","country":"","linkedin":"","github":"","portfolio":""},"summary":"","education":[{"id":1,"college":"","degree":"","spec":"","cgpa":"","from":"","to":"","desc":""}],"experience":[{"id":1,"company":"","title":"","type":"Full-time","location":"","from":"","to":"","current":false,"resp":""}],"projects":[{"id":1,"name":"","desc":"","tech":"","github":"","live":""}],"skills":{"technical":[],"soft":[],"languages":[],"certifications":[]},"achievements":{"awards":"","hackathons":"","publications":"","patents":""},"template":"minimal"}
-Rules: Fill every field you find. For dates use YYYY-MM format. Return ONLY the JSON object.`;
-
-function parseClaudeJSON(raw) {
-  const clean=raw.replace(/\`\`\`json|\`\`\`/gi,"").trim();
-  try{return JSON.parse(clean);}catch{
-    const match=clean.match(/\{[\s\S]*\}/);
-    if(match)return JSON.parse(match[0]);
-    throw new Error("Could not parse JSON");
-  }
-}
-
-function finalizeData(parsed) {
-  const base=blankData();
-  const merged={...base,...parsed};
-  if(!Array.isArray(merged.education)||!merged.education.length)merged.education=base.education;
-  if(!Array.isArray(merged.experience)||!merged.experience.length)merged.experience=base.experience;
-  if(!Array.isArray(merged.projects)||!merged.projects.length)merged.projects=base.projects;
-  merged.education=merged.education.map((e,i)=>({...e,id:i+1}));
-  merged.experience=merged.experience.map((e,i)=>({...e,id:i+1}));
-  merged.projects=merged.projects.map((p,i)=>({...p,id:i+1}));
-  if(!merged.skills||typeof merged.skills!=="object")merged.skills=base.skills;
-  merged.skills={technical:[],soft:[],languages:[],certifications:[],...merged.skills};
-  if(!merged.achievements||typeof merged.achievements!=="object")merged.achievements=base.achievements;
-  merged.template="minimal";
-  return merged;
-}
-
-async function handleFileUpload(file) {
-  if(!file)return;
-  const name=file.name.toLowerCase();
-  const type=file.type.toLowerCase();
-  const isImage=type.startsWith("image/");
-  const isPDF=type==="application/pdf"||name.endsWith(".pdf");
-  const isDocx=type.includes("wordprocessingml")||type==="application/msword"||name.endsWith(".docx")||name.endsWith(".doc");
-  if(!isImage&&!isPDF&&!isDocx){setState({uploadProgress:"error",uploadMessage:"Unsupported file. Upload a PDF, Word (.docx), or image."});return;}
-  setState({uploadProgress:"reading",uploadMessage:""});
-  try{
-    let result="";
-    if(isImage){setState({uploadProgress:"scanning"});const base64=await fileToBase64(file);result=await callClaudeWithImage(base64,file.type,"Extract all resume information from this image and return it as structured JSON.",RESUME_PARSE_SYSTEM);}
-    else if(isPDF){let pdfText="";try{pdfText=await extractPdfText(file);}catch(e){console.warn(e);}setState({uploadProgress:"scanning"});if(pdfText&&pdfText.length>100){result=await callClaudeWithText(pdfText,RESUME_PARSE_SYSTEM);}else{const base64=await pdfToBase64Image(file);result=await callClaudeWithImage(base64,"image/jpeg","Extract all resume information from this PDF image and return it as structured JSON.",RESUME_PARSE_SYSTEM);}}
-    else if(isDocx){let docText="";try{docText=await extractDocxText(file);}catch(e){throw new Error("Could not read Word document.");}if(!docText||docText.length<30)throw new Error("Word document appears empty.");setState({uploadProgress:"scanning"});result=await callClaudeWithText(docText,RESUME_PARSE_SYSTEM);}
-    const parsed=parseClaudeJSON(result);
-    state.data=finalizeData(parsed);
-    setState({uploadProgress:"done"});
-  }catch(err){console.error(err);setState({uploadProgress:"error",uploadMessage:err.message||"Scanning failed. Try again."});}
-}
-
-function collectFormData() {
-  const d=state.data;
-  const g=id=>{const el=document.getElementById(id);return el?el.value:"";};
-  ["firstName","lastName","email","phone","city","state","country","linkedin","github","portfolio"].forEach(k=>{const v=g(`p-${k}`);if(v!==null&&v!==undefined)d.personal[k]=v;});
-  const sumEl=document.getElementById("sum-text");if(sumEl)d.summary=sumEl.value;
-  d.education.forEach(e=>{["college","degree","spec","cgpa","from","to","desc"].forEach(k=>{const v=g(`edu-${k}-${e.id}`);if(v!==null&&v!==undefined)e[k]=v;});});
-  d.experience.forEach(e=>{["company","title","type","location"].forEach(k=>{const v=g(`exp-${k}-${e.id}`);if(v!==null&&v!==undefined)e[k]=v;});const fromEl=document.getElementById(`exp-from-${e.id}`);if(fromEl)e.from=fromEl.value;const curEl=document.getElementById(`exp-cur-${e.id}`);if(curEl)e.current=curEl.checked;if(!e.current){const toEl=document.getElementById(`exp-to-${e.id}`);if(toEl)e.to=toEl.value;}const respEl=document.getElementById(`exp-resp-${e.id}`);if(respEl)e.resp=respEl.value;});
-  d.projects.forEach(p=>{["name","tech","github","live"].forEach(k=>{const v=g(`proj-${k}-${p.id}`);if(v!==null&&v!==undefined)p[k]=v;});const descEl=document.getElementById(`proj-desc-${p.id}`);if(descEl)p.desc=descEl.value;});
-  ["awards","hackathons","publications","patents"].forEach(k=>{const el=document.getElementById(`ach-${k}`);if(el)d.achievements[k]=el.value;});
-  const lvl=document.getElementById("sum-level");if(lvl)state.sumLevel=lvl.value;
-  const ind=document.getElementById("sum-industry");if(ind)state.sumIndustry=ind.value;
-}
-
-function bindBuilder() {
-  const back=document.getElementById("btn-back-builder");if(back)back.onclick=()=>{collectFormData();setState({page:"landing"});};
-  const prev=document.getElementById("btn-prev");if(prev)prev.onclick=()=>{collectFormData();setState({step:Math.max(0,state.step-1)});};
-  const next=document.getElementById("btn-next");if(next)next.onclick=()=>{collectFormData();setState({step:Math.min(STEPS.length-1,state.step+1)});};
-  document.querySelectorAll(".step-btn").forEach(b=>{b.onclick=()=>{collectFormData();setState({step:parseInt(b.dataset.step)});};});
-  const prevBtn=document.getElementById("btn-toggle-preview");if(prevBtn)prevBtn.onclick=()=>{collectFormData();setState({preview:!state.preview});};
-  ["btn-download","btn-download2"].forEach(id=>{const el=document.getElementById(id);if(el)el.onclick=()=>{collectFormData();downloadPDF();};});
-  document.querySelectorAll(".template-pick").forEach(el=>{el.onclick=()=>{collectFormData();updData("template",el.dataset.tmpl);};});
-  const sm=document.getElementById("sum-mode-manual");const sa=document.getElementById("sum-mode-ai");
-  if(sm)sm.onclick=()=>setState({summaryMode:"manual"});
-  if(sa)sa.onclick=()=>setState({summaryMode:"ai"});
-  document.querySelectorAll(".kw-btn").forEach(b=>{b.onclick=()=>{const kw=b.dataset.kw;const cur=state.sumKeywords||[];state.sumKeywords=cur.includes(kw)?cur.filter(x=>x!==kw):[...cur,kw];render();};});
-  const genBtn=document.getElementById("btn-gen-sum");
-  if(genBtn)genBtn.onclick=async()=>{collectFormData();state.aiLoading.genSum=true;render();try{const level=state.sumLevel||"1–3 years";const industry=state.sumIndustry||"Software Engineering";const kw=(state.sumKeywords||[]).join(", ")||"general";const result=await callClaude([{role:"user",content:`Write a 3-sentence ATS-optimized professional summary for a ${level} ${industry} professional. Keywords: ${kw}. Use action verbs, first person, results-focused. No preamble.`}],"You are an expert ATS resume writer.");state.data.summary=result;}catch{showToast("AI failed. Check your connection.","err");}state.aiLoading.genSum=false;render();};
-  const enhBtn=document.getElementById("btn-enh-sum");
-  if(enhBtn)enhBtn.onclick=async()=>{collectFormData();const sumEl=document.getElementById("sum-text");const currentSum=sumEl?sumEl.value:state.data.summary;if(!currentSum){showToast("Write a summary first","err");return;}state.aiLoading.enhSum=true;render();try{const result=await callClaude([{role:"user",content:`Improve this resume summary for ATS. Stronger action verbs, quantified outcomes, 3–4 sentences:\n${currentSum}`}],"You are an expert ATS resume writer. Return only the improved text.");state.data.summary=result;}catch{showToast("AI failed. Check your connection.","err");}state.aiLoading.enhSum=false;render();};
-  state.data.experience.forEach(e=>{const aiBtn=document.getElementById(`btn-exp-ai-${e.id}`);if(aiBtn)aiBtn.onclick=async()=>{collectFormData();const respEl=document.getElementById(`exp-resp-${e.id}`);const text=respEl?respEl.value:e.resp;if(!text){showToast("Write responsibilities first","err");return;}state.aiLoading[`expAI-${e.id}`]=true;render();try{const result=await callClaude([{role:"user",content:`Improve these job responsibilities for ATS. Strong action verbs, quantified results:\n${text}`}],"You are an expert ATS resume writer. Return only the improved text.");state.data.experience=state.data.experience.map(ex=>ex.id===e.id?{...ex,resp:result}:ex);}catch{showToast("AI failed. Check your connection.","err");}state.aiLoading[`expAI-${e.id}`]=false;render();};});
-  const addEdu=document.getElementById("btn-add-edu");if(addEdu)addEdu.onclick=()=>{collectFormData();state.data.education.push({id:Date.now(),college:"",degree:"",spec:"",cgpa:"",from:"",to:"",desc:""});render();};
-  state.data.education.forEach(e=>{const del=document.getElementById(`btn-del-edu-${e.id}`);if(del)del.onclick=()=>{collectFormData();state.data.education=state.data.education.filter(x=>x.id!==e.id);render();};});
-  const addExp=document.getElementById("btn-add-exp");if(addExp)addExp.onclick=()=>{collectFormData();state.data.experience.push({id:Date.now(),company:"",title:"",type:"Full-time",location:"",from:"",to:"",current:false,resp:""});render();};
-  state.data.experience.forEach(e=>{const del=document.getElementById(`btn-del-exp-${e.id}`);if(del)del.onclick=()=>{collectFormData();state.data.experience=state.data.experience.filter(x=>x.id!==e.id);render();};});
-  const addProj=document.getElementById("btn-add-proj");if(addProj)addProj.onclick=()=>{collectFormData();state.data.projects.push({id:Date.now(),name:"",desc:"",tech:"",github:"",live:""});render();};
-  state.data.projects.forEach(p=>{const del=document.getElementById(`btn-del-proj-${p.id}`);if(del)del.onclick=()=>{collectFormData();state.data.projects=state.data.projects.filter(x=>x.id!==p.id);render();};});
-  document.querySelectorAll(".skill-preset").forEach(b=>{b.onclick=()=>{collectFormData();const{cat,skill}=b.dataset;const cur=state.data.skills[cat]||[];state.data.skills[cat]=cur.includes(skill)?cur.filter(x=>x!==skill):[...cur,skill];render();};});
-  ["technical","soft","languages","certifications"].forEach(cat=>{const addBtn=document.getElementById(`btn-add-skill-${cat}`);const inp=document.getElementById(`skill-inp-${cat}`);const doAdd=()=>{if(!inp||!inp.value.trim())return;collectFormData();state.data.skills[cat]=[...(state.data.skills[cat]||[]),inp.value.trim()];render();};if(addBtn)addBtn.onclick=doAdd;if(inp)inp.onkeydown=e=>{if(e.key==="Enter")doAdd();};});
-  document.querySelectorAll(".skill-remove").forEach(b=>{b.onclick=()=>{collectFormData();const{cat,skill}=b.dataset;state.data.skills[cat]=(state.data.skills[cat]||[]).filter(x=>x!==skill);render();};});
-  const sumTa=document.getElementById("sum-text");if(sumTa)sumTa.oninput=()=>{state.data.summary=sumTa.value;const hint=sumTa.parentElement?.nextElementSibling;if(hint&&hint.tagName==="P")hint.textContent=`${sumTa.value.length} chars · aim for 150–250`;};
-}
-
-function downloadPDF() {
-  collectFormData();
-  const d=state.data;
-  const ResumeHTML=(RESUME_MAP[d.template]||resumeMinimal)(d);
-  const w=window.open("","_blank","width=900,height=700");
-  if(!w){showToast("Allow popups to download PDF","err");return;}
-  w.document.write(`<!DOCTYPE html><html><head><title>Resume – ${d.personal.firstName} ${d.personal.lastName}</title><style>*{box-sizing:border-box;margin:0;padding:0}body{margin:0}@page{margin:0;size:A4}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${ResumeHTML}</body></html>`);
-  w.document.close();
-  setTimeout(()=>{w.focus();w.print();},700);
-  showToast("PDF ready! Choose 'Save as PDF' in the print dialog.");
-}
-
-render();
-</script>
+    // Initial Render
+    render();
+  </script>
 </body>
 </html>
