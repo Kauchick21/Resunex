@@ -43,9 +43,92 @@ module.exports = async function handler(req, res) {
     const payload = {
       contents: [{ role: "user", parts }],
       generationConfig: {
-        maxOutputTokens: body.max_tokens || 2000,
+        maxOutputTokens: body.max_tokens || 4000,
         temperature: 0.1,
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            personal: {
+              type: "OBJECT",
+              properties: {
+                firstName: { type: "STRING" },
+                lastName: { type: "STRING" },
+                email: { type: "STRING" },
+                phone: { type: "STRING" },
+                city: { type: "STRING" },
+                state: { type: "STRING" },
+                country: { type: "STRING" },
+                linkedin: { type: "STRING" },
+                github: { type: "STRING" },
+                portfolio: { type: "STRING" }
+              }
+            },
+            summary: { type: "STRING" },
+            education: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  college: { type: "STRING" },
+                  degree: { type: "STRING" },
+                  spec: { type: "STRING" },
+                  cgpa: { type: "STRING" },
+                  from: { type: "STRING" },
+                  to: { type: "STRING" },
+                  desc: { type: "STRING" }
+                }
+              }
+            },
+            experience: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  company: { type: "STRING" },
+                  title: { type: "STRING" },
+                  type: { type: "STRING" },
+                  location: { type: "STRING" },
+                  from: { type: "STRING" },
+                  to: { type: "STRING" },
+                  current: { type: "BOOLEAN" },
+                  resp: { type: "STRING" }
+                }
+              }
+            },
+            projects: {
+              type: "ARRAY",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  name: { type: "STRING" },
+                  desc: { type: "STRING" },
+                  tech: { type: "STRING" },
+                  github: { type: "STRING" },
+                  live: { type: "STRING" }
+                }
+              }
+            },
+            skills: {
+              type: "OBJECT",
+              properties: {
+                technical: { type: "ARRAY", items: { type: "STRING" } },
+                soft: { type: "ARRAY", items: { type: "STRING" } },
+                languages: { type: "ARRAY", items: { type: "STRING" } },
+                certifications: { type: "ARRAY", items: { type: "STRING" } }
+              }
+            },
+            achievements: {
+              type: "OBJECT",
+              properties: {
+                awards: { type: "STRING" },
+                hackathons: { type: "STRING" },
+                publications: { type: "STRING" },
+                patents: { type: "STRING" }
+              }
+            }
+          }
+        }
       }
     };
 
@@ -76,7 +159,6 @@ module.exports = async function handler(req, res) {
 
     let text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    // Clean markdown code blocks if returned
     text = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
 
     return res.status(200).json({
