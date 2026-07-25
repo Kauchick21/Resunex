@@ -44,7 +44,8 @@ module.exports = async function handler(req, res) {
       contents: [{ role: "user", parts }],
       generationConfig: {
         maxOutputTokens: body.max_tokens || 2000,
-        temperature: 0.2
+        temperature: 0.1,
+        responseMimeType: "application/json"
       }
     };
 
@@ -54,7 +55,6 @@ module.exports = async function handler(req, res) {
       };
     }
 
-    // Updated model endpoint to gemini-2.5-flash
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
@@ -76,7 +76,7 @@ module.exports = async function handler(req, res) {
 
     let text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    // Strip Markdown code block wrappers
+    // Clean markdown code blocks if returned
     text = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
 
     return res.status(200).json({
