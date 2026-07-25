@@ -12,7 +12,7 @@ module.exports = async function handler(req, res) {
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
 
-    const systemText = body.system || "";
+    const systemText = body.system || "You are an expert resume parser. Extract structured details from the provided resume into valid JSON matching the exact schema requested.";
     const userMessages = body.messages || [];
     const lastMessage = userMessages[userMessages.length - 1];
 
@@ -42,6 +42,9 @@ module.exports = async function handler(req, res) {
 
     const payload = {
       contents: [{ role: "user", parts }],
+      systemInstruction: {
+        parts: [{ text: systemText + "\nIMPORTANT: Do NOT use unescaped double quotes or literal raw line breaks inside string values. Use clean single string text for bullet points." }]
+      },
       generationConfig: {
         maxOutputTokens: body.max_tokens || 4000,
         temperature: 0.1,
@@ -132,12 +135,6 @@ module.exports = async function handler(req, res) {
       }
     };
 
-    if (systemText && systemText.trim() !== "") {
-      payload.systemInstruction = {
-        parts: [{ text: systemText }]
-      };
-    }
-
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
@@ -159,6 +156,7 @@ module.exports = async function handler(req, res) {
 
     let text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
+    // Cleanup formatting
     text = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
 
     return res.status(200).json({
