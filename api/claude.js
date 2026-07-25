@@ -16,27 +16,40 @@ module.exports = async function handler(req, res) {
     const userMessages = body.messages || [];
     const lastMessage = userMessages[userMessages.length - 1];
 
-    let contents = [];
+    let parts = [];
 
     if (lastMessage && Array.isArray(lastMessage.content)) {
-      const parts = lastMessage.content.map(c => {
+      parts = lastMessage.content.map(c => {
         if (c.type === "text") return { text: c.text };
-        if (c.type === "image") return {
-          inlineData: {
-            mimeType: c.source.media_type,
-            data: c.source.data
-          }
-        };
+        if (c.type === "image") {
+          return {
+            inlineData: {
+              mimeType: c.source.media_type,
+              data: c.source.data
+            }
+          };
+        }
         return { text: "" };
       });
-      if (systemText) parts.unshift({ text: systemText + "\n\n" });
-      contents = [{ role: "user", parts }];
     } else {
-      const text = lastMessage?.content || "";
-      contents = [{
-        role: "user",
-        parts: [{ text: systemText ? systemText + "\n\n" + text : text }]
-      }];
+      const text = typeof lastMessage?.content === "string" ? lastMessage.content : "";
+      parts = [{ text }];
+    }
+
+    // Build standard Gemini payload
+    const payload = {
+      contents: [{ role: "user", parts }],
+      generationConfig: {
+        maxOutputTokens: body.max_tokens || 1500,
+        temperature: 0.3
+      }
+    };
+
+    // Attach system instruction properly
+    if (systemText) {
+      payload.systemInstruction = {
+        parts: [{ text: systemText }]
+      };
     }
 
     const geminiRes = await fetch(
@@ -44,16 +57,7 @@ module.exports = async function handler(req, res) {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents,
-          generationConfig: {
-            maxOutputTokens: body.max_tokens || 1500,
-            temperature: 0.3
-          },
-          systemInstruction: systemText ? {
-            parts: [{ text: systemText }]
-          } : undefined
-        })
+        body: JSON.stringify(payload)
       }
     );
 
@@ -68,7 +72,7 @@ module.exports = async function handler(req, res) {
 
     let text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-    // Clean up markdown code blocks that Gemini sometimes adds
+    // Clean markdown wrappers
     text = text.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
 
     return res.status(200).json({
