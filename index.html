@@ -49,7 +49,7 @@
   <script>
     // ─── CONFIG ───────────────────────────────────────────────
     const API = "/api/claude";
-    const MODEL = "gemini-1.5-flash";
+    const MODEL = "gemini-2.5-flash";
 
     // ─── API HELPERS ──────────────────────────────────────────
     async function callClaude(messages, system, maxTokens = 1500) {
@@ -252,7 +252,8 @@
       if (!file) return;
       setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
 
-      const systemPrompt = `You are a resume parsing assistant. Extract candidate information into raw JSON with this exact schema:
+      const systemPrompt = `You are a strict JSON generator. Parse the resume content into valid JSON with no comments, trailing commas, or markdown formatting outside the JSON object.
+      Use this exact structure:
       {
         "personal": { "firstName": "", "lastName": "", "email": "", "phone": "", "city": "", "state": "", "country": "", "linkedin": "", "github": "", "portfolio": "" },
         "summary": "",
@@ -299,9 +300,18 @@
         }
 
         setState({ uploadProgress: 90, uploadMessage: "Structuring resume..." });
+
+        // Robust JSON string extraction & cleaning
+        const startIdx = jsonStr.indexOf('{');
+        const endIdx = jsonStr.lastIndexOf('}');
         
-        // Clean markdown code blocks if any remain
-        jsonStr = jsonStr.replace(/```json/gi, "").replace(/```/g, "").trim();
+        if (startIdx !== -1 && endIdx !== -1) {
+          jsonStr = jsonStr.substring(startIdx, endIdx + 1);
+        }
+
+        // Clean trailing commas before closing brackets
+        jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
+
         const parsed = JSON.parse(jsonStr);
 
         setState({
