@@ -38,8 +38,8 @@ async function callClaude(messages, system, maxTokens = 1500) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages })
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
   const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
   return data.content?.[0]?.text || "";
 }
 
@@ -60,8 +60,8 @@ async function callClaudeWithImage(base64, mimeType, prompt, system) {
       }]
     })
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
   const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
   return data.content?.[0]?.text || "";
 }
 
@@ -76,76 +76,9 @@ async function callClaudeWithText(text, system) {
       messages: [{ role: "user", content: `Here is the full text extracted from a resume. Parse it into structured JSON:\n\n${text}` }]
     })
   });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
   const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
   return data.content?.[0]?.text || "";
-}
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result.split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function fileToArrayBuffer(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-async function extractDocxText(file) {
-  const arrayBuffer = await fileToArrayBuffer(file);
-  const result = await mammoth.extractRawText({ arrayBuffer });
-  return result.value || "";
-}
-
-async function pdfToBase64Image(file) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-  const arrayBuffer = await fileToArrayBuffer(file);
-  const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const totalPages = Math.min(pdfDoc.numPages, 3);
-  const canvases = [];
-  let totalHeight = 0, maxWidth = 0;
-  for (let i = 1; i <= totalPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const viewport = page.getViewport({ scale: 2.0 });
-    const canvas = document.createElement("canvas");
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-    canvases.push(canvas);
-    totalHeight += viewport.height;
-    maxWidth = Math.max(maxWidth, viewport.width);
-  }
-  const merged = document.createElement("canvas");
-  merged.width = maxWidth;
-  merged.height = totalHeight;
-  const ctx = merged.getContext("2d");
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, maxWidth, totalHeight);
-  let y = 0;
-  for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height; }
-  return merged.toDataURL("image/jpeg", 0.92).split(",")[1];
-}
-
-async function extractPdfText(file) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-  const arrayBuffer = await fileToArrayBuffer(file);
-  const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const totalPages = Math.min(pdfDoc.numPages, 5);
-  let fullText = "";
-  for (let i = 1; i <= totalPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const content = await page.getTextContent();
-    fullText += content.items.map(item => item.str).join(" ") + "\n";
-  }
-  return fullText.trim();
 }
 
 function atsScore(d) {
