@@ -14,6 +14,9 @@
   <!-- Mammoth.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 
+  <!-- Vercel Web Analytics -->
+  <script defer src="/_vercel/insights/script.js"></script>
+
   <style>
     @media print {
       body * { visibility: hidden; }
@@ -229,7 +232,7 @@
     // ─── STATE MANAGEMENT ────────────────────────────────────────
     let state = {
       page: "landing",
-      selectedTemplate: "one-pager", // Default to one-pager
+      selectedTemplate: "one-pager",
       showTemplateModal: false,
       data: blankData(),
       toast: null,
@@ -288,8 +291,18 @@
       toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
     }
 
+    // ─── DOWNLOAD & ANALYTICS TRIGGER ─────────────────────────────
     function triggerDownload() {
       setState({ showTemplateModal: false });
+      
+      // Track Download Event in Vercel Analytics
+      if (window.va) {
+        window.va('event', { 
+          name: 'CV Downloaded', 
+          data: { template: state.selectedTemplate } 
+        });
+      }
+
       setTimeout(() => { window.print(); }, 200);
     }
 
