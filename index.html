@@ -18,8 +18,9 @@
     @media print {
       body * { visibility: hidden; }
       #cv-preview-card, #cv-preview-card * { visibility: visible; }
-      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; }
+      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; shadow: none; border: none; }
       header, .no-print { display: none !important; }
+      @page { margin: 10mm; size: auto; }
     }
   </style>
 </head>
@@ -228,6 +229,8 @@
     // ─── STATE MANAGEMENT ────────────────────────────────────────
     let state = {
       page: "landing",
+      selectedTemplate: "one-pager", // Default to one-pager
+      showTemplateModal: false,
       data: blankData(),
       toast: null,
       uploadProgress: null,
@@ -283,6 +286,11 @@
       state.toast = { msg, type }; 
       render();
       toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
+    }
+
+    function triggerDownload() {
+      setState({ showTemplateModal: false });
+      setTimeout(() => { window.print(); }, 200);
     }
 
     // ─── FILE UPLOAD PROCESSOR ──────────────────────────────────
@@ -344,6 +352,295 @@
         console.error("Upload error:", err);
         setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` });
       }
+    }
+
+    // ─── TEMPLATE RENDERERS ─────────────────────────────────────
+    function renderCVContent() {
+      const d = state.data;
+      const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
+      const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+      const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+      const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+      const t = state.selectedTemplate;
+
+      // 1. ONE PAGER TEMPLATE
+      if (t === 'one-pager') {
+        return `
+          <div class="space-y-4 text-xs leading-tight">
+            <!-- Compact Header -->
+            <div class="border-b border-slate-300 pb-2">
+              <h1 class="text-2xl font-black text-slate-900 tracking-tight uppercase">${fullName}</h1>
+              <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600 font-medium mt-1">
+                ${d.personal?.email ? `<span>✉️ ${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
+                ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
+              </div>
+            </div>
+
+            <!-- Summary -->
+            ${d.summary ? `
+              <div>
+                <p class="text-slate-700 leading-snug">${d.summary}</p>
+              </div>
+            ` : ''}
+
+            <!-- Dense Two Column Layout -->
+            <div class="grid grid-cols-12 gap-4">
+              <!-- Left Column: Experience & Projects (7 cols) -->
+              <div class="col-span-7 space-y-3">
+                ${d.experience?.length ? `
+                  <div>
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Experience</h2>
+                    <div class="space-y-2">
+                      ${d.experience.map(e => `
+                        <div>
+                          <div class="flex justify-between items-baseline font-bold text-slate-800">
+                            <span>${e.title || 'Role'} ${e.company ? `| ${e.company}` : ''}</span>
+                            <span class="text-[10px] text-slate-500 font-normal">${e.from || ''} - ${e.to || ''}</span>
+                          </div>
+                          <p class="text-slate-600 mt-0.5 text-[11px] leading-snug">${e.resp || ''}</p>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+
+                ${d.projects?.length ? `
+                  <div>
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Key Projects</h2>
+                    <div class="space-y-2">
+                      ${d.projects.map(p => `
+                        <div>
+                          <div class="flex justify-between items-baseline font-bold text-slate-800">
+                            <span>${p.name || 'Project'}</span>
+                            ${p.tech ? `<span class="text-[10px] text-blue-600 font-medium">${p.tech}</span>` : ''}
+                          </div>
+                          <p class="text-slate-600 text-[11px] leading-snug">${p.desc || ''}</p>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+              </div>
+
+              <!-- Right Column: Education & Skills (5 cols) -->
+              <div class="col-span-5 space-y-3 border-l border-slate-100 pl-3">
+                ${d.education?.length ? `
+                  <div>
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Education</h2>
+                    <div class="space-y-2">
+                      ${d.education.map(e => `
+                        <div>
+                          <div class="font-bold text-slate-800">${e.degree || ''} ${e.spec || ''}</div>
+                          <div class="text-slate-600 text-[11px]">${e.college || ''}</div>
+                          <div class="text-[10px] text-slate-400">${e.from || ''} - ${e.to || ''}</div>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+
+                ${techSkills.length || softSkills.length ? `
+                  <div>
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Skills</h2>
+                    <div class="space-y-1.5">
+                      ${techSkills.length ? `
+                        <div>
+                          <span class="font-semibold text-slate-700 text-[11px]">Technical:</span>
+                          <p class="text-slate-600 text-[11px] leading-tight">${techSkills.join(", ")}</p>
+                        </div>
+                      ` : ''}
+                      ${softSkills.length ? `
+                        <div>
+                          <span class="font-semibold text-slate-700 text-[11px]">Soft Skills:</span>
+                          <p class="text-slate-600 text-[11px] leading-tight">${softSkills.join(", ")}</p>
+                        </div>
+                      ` : ''}
+                    </div>
+                  </div>
+                ` : ''}
+
+                ${certs.length ? `
+                  <div>
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-1 tracking-wider">Certifications</h2>
+                    <ul class="list-disc list-inside text-slate-600 text-[11px] space-y-0.5">
+                      ${certs.map(c => `<li>${c}</li>`).join('')}
+                    </ul>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      // 2. MODERN TEMPLATE
+      if (t === 'modern') {
+        return `
+          <div class="grid grid-cols-3 gap-6 text-sm">
+            <div class="col-span-1 bg-slate-100/70 p-4 rounded-xl space-y-4">
+              <div>
+                <h1 class="text-xl font-bold text-slate-900">${fullName}</h1>
+                <div class="text-xs text-slate-600 space-y-1 mt-2">
+                  ${d.personal?.email ? `<p>✉️ ${d.personal.email}</p>` : ''}
+                  ${d.personal?.phone ? `<p>📞 ${d.personal.phone}</p>` : ''}
+                  ${d.personal?.linkedin ? `<p>🔗 ${d.personal.linkedin}</p>` : ''}
+                  ${d.personal?.github ? `<p>💻 ${d.personal.github}</p>` : ''}
+                </div>
+              </div>
+
+              ${techSkills.length || softSkills.length ? `
+                <div class="border-t border-slate-200 pt-3">
+                  <h3 class="font-bold text-slate-800 text-xs uppercase mb-2">Skills</h3>
+                  <div class="flex flex-wrap gap-1">
+                    ${[...techSkills, ...softSkills].map(s => `<span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded font-medium">${s}</span>`).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              ${d.education?.length ? `
+                <div class="border-t border-slate-200 pt-3 space-y-2">
+                  <h3 class="font-bold text-slate-800 text-xs uppercase">Education</h3>
+                  ${d.education.map(e => `
+                    <div>
+                      <p class="font-semibold text-xs text-slate-800">${e.degree || ''} ${e.spec || ''}</p>
+                      <p class="text-[11px] text-slate-600">${e.college || ''}</p>
+                      <p class="text-[10px] text-slate-400">${e.from || ''} - ${e.to || ''}</p>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="col-span-2 space-y-4">
+              ${d.summary ? `
+                <div>
+                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">About Me</h2>
+                  <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
+                </div>
+              ` : ''}
+
+              ${d.experience?.length ? `
+                <div>
+                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Experience</h2>
+                  <div class="space-y-3">
+                    ${d.experience.map(e => `
+                      <div class="border-l-2 border-blue-500 pl-3">
+                        <p class="font-bold text-sm text-slate-800">${e.title || 'Role'} <span class="text-xs font-normal text-slate-500">at ${e.company || ''}</span></p>
+                        <p class="text-[10px] text-slate-400 mb-1">${e.from || ''} - ${e.to || ''}</p>
+                        <p class="text-xs text-slate-600">${e.resp || ''}</p>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+
+              ${d.projects?.length ? `
+                <div>
+                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Projects</h2>
+                  <div class="space-y-2">
+                    ${d.projects.map(p => `
+                      <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                        <p class="font-semibold text-xs text-slate-800">${p.name || ''}</p>
+                        <p class="text-[11px] text-slate-600 mt-0.5">${p.desc || ''}</p>
+                      </div>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }
+
+      // 3. CLASSIC TEMPLATE
+      if (t === 'classic') {
+        return `
+          <div class="space-y-4 font-serif text-sm">
+            <div class="text-center border-b pb-3">
+              <h1 class="text-2xl font-bold uppercase tracking-wide text-slate-900">${fullName}</h1>
+              <div class="text-xs text-slate-600 flex justify-center gap-3 mt-1">
+                ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>• ${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>• ${d.personal.linkedin}</span>` : ''}
+              </div>
+            </div>
+
+            ${d.summary ? `
+              <div>
+                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-1">Executive Summary</h2>
+                <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
+              </div>
+            ` : ''}
+
+            ${d.experience?.length ? `
+              <div>
+                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-2">Professional Experience</h2>
+                <div class="space-y-3">
+                  ${d.experience.map(e => `
+                    <div>
+                      <div class="flex justify-between font-bold text-xs text-slate-800">
+                        <span>${e.title || 'Role'} — ${e.company || ''}</span>
+                        <span>${e.from || ''} – ${e.to || ''}</span>
+                      </div>
+                      <p class="text-xs text-slate-600 mt-1">${e.resp || ''}</p>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            ${d.education?.length ? `
+              <div>
+                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-2">Education</h2>
+                <div class="space-y-2">
+                  ${d.education.map(e => `
+                    <div class="flex justify-between text-xs">
+                      <div>
+                        <span class="font-bold">${e.college || ''}</span> — ${e.degree || ''} ${e.spec || ''}
+                      </div>
+                      <span class="text-slate-500">${e.from || ''} – ${e.to || ''}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
+      // 4. MINIMAL TEMPLATE
+      return `
+        <div class="space-y-5 text-sm font-sans">
+          <div>
+            <h1 class="text-3xl font-light text-slate-900 tracking-tight">${fullName}</h1>
+            <div class="flex gap-4 text-xs text-slate-400 mt-2">
+              ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
+              ${d.personal?.phone ? `<span>${d.personal.phone}</span>` : ''}
+              ${d.personal?.linkedin ? `<span>${d.personal.linkedin}</span>` : ''}
+            </div>
+          </div>
+
+          ${d.summary ? `<p class="text-xs text-slate-600 leading-relaxed">${d.summary}</p>` : ''}
+
+          ${d.experience?.length ? `
+            <div class="space-y-3">
+              <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Experience</h2>
+              ${d.experience.map(e => `
+                <div class="space-y-1">
+                  <div class="flex justify-between text-xs">
+                    <span class="font-medium text-slate-800">${e.title || ''}</span>
+                    <span class="text-slate-400">${e.from || ''} — ${e.to || ''}</span>
+                  </div>
+                  <p class="text-xs text-slate-500">${e.company || ''}</p>
+                  <p class="text-xs text-slate-600 pt-1">${e.resp || ''}</p>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
     }
 
     // ─── RENDER ENGINE ──────────────────────────────────────────
@@ -599,120 +896,88 @@
           </div>
         `;
       } else if (state.page === "preview") {
-        const d = state.data;
-        const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
-        const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
-        const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
-        const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
-
         app.innerHTML = `
           <div class="max-w-4xl mx-auto w-full space-y-6">
             <!-- Top Controls -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between no-print">
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 no-print">
               <button onclick="setState({ page: 'builder' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl">
-                ← Edit Details
+                ← Edit Data
               </button>
-              <div class="flex gap-3">
-                <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-6 py-2 rounded-xl shadow-sm transition-all">
-                  🖨️ Print / Save as PDF
-                </button>
+              
+              <!-- Quick Switcher -->
+              <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+                <button onclick="setState({ selectedTemplate: 'one-pager' })" class="px-3 py-1.5 rounded-lg transition-all ${state.selectedTemplate === 'one-pager' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600'}">⚡ One Pager</button>
+                <button onclick="setState({ selectedTemplate: 'modern' })" class="px-3 py-1.5 rounded-lg transition-all ${state.selectedTemplate === 'modern' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600'}">Modern</button>
+                <button onclick="setState({ selectedTemplate: 'classic' })" class="px-3 py-1.5 rounded-lg transition-all ${state.selectedTemplate === 'classic' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600'}">Classic</button>
+                <button onclick="setState({ selectedTemplate: 'minimal' })" class="px-3 py-1.5 rounded-lg transition-all ${state.selectedTemplate === 'minimal' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600'}">Minimal</button>
               </div>
+
+              <button onclick="setState({ showTemplateModal: true })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
+                📥 Download CV
+              </button>
             </div>
 
-            <!-- Resume Render Card -->
-            <div id="cv-preview-card" class="bg-white border border-slate-200 shadow-md rounded-2xl p-10 space-y-6 text-slate-800">
-              <!-- Header -->
-              <div class="border-b border-slate-200 pb-6 text-center">
-                <h1 class="text-3xl font-extrabold text-slate-900">${fullName}</h1>
-                <div class="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-2">
-                  ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
-                  ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
-                  ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
-                  ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
-                </div>
-              </div>
-
-              <!-- Summary -->
-              ${d.summary ? `
-                <div class="space-y-2">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Professional Summary</h2>
-                  <p class="text-sm text-slate-700 leading-relaxed">${d.summary}</p>
-                </div>
-              ` : ''}
-
-              <!-- Experience -->
-              ${d.experience?.length ? `
-                <div class="space-y-4">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Work Experience</h2>
-                  <div class="space-y-4">
-                    ${d.experience.map(exp => `
-                      <div>
-                        <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-sm">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3>
-                          <span class="text-xs text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span>
-                        </div>
-                        ${exp.resp ? `<p class="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Education -->
-              ${d.education?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Education</h2>
-                  <div class="space-y-3">
-                    ${d.education.map(edu => `
-                      <div class="flex justify-between items-baseline">
-                        <div>
-                          <h3 class="font-bold text-slate-900 text-sm">${edu.college || 'University'}</h3>
-                          <p class="text-xs text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p>
-                        </div>
-                        <span class="text-xs text-slate-500">${edu.from || ''} - ${edu.to || ''}</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Key Projects -->
-              ${d.projects?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Projects</h2>
-                  <div class="space-y-3">
-                    ${d.projects.map(proj => `
-                      <div>
-                        <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-sm">${proj.name || 'Project'}</h3>
-                          ${proj.tech ? `<span class="text-xs text-slate-500 italic">${proj.tech}</span>` : ''}
-                        </div>
-                        ${proj.desc ? `<p class="text-xs text-slate-600 mt-1">${proj.desc}</p>` : ''}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Skills & Certifications -->
-              ${(techSkills.length || softSkills.length || certs.length) ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Skills & Certifications</h2>
-                  <div class="space-y-1 text-xs text-slate-700">
-                    ${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}
-                    ${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}
-                    ${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}
-                  </div>
-                </div>
-              ` : ''}
-
+            <!-- CV Preview Card -->
+            <div id="cv-preview-card" class="bg-white border border-slate-200 rounded-2xl p-8 shadow-xl">
+              ${renderCVContent()}
             </div>
           </div>
+
+          <!-- Template Selection Modal -->
+          ${state.showTemplateModal ? `
+            <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 no-print">
+              <div class="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-slate-100">
+                <div class="flex justify-between items-center border-b pb-3">
+                  <div>
+                    <h3 class="text-xl font-bold text-slate-900">Select Resume Template</h3>
+                    <p class="text-xs text-slate-500">Choose a layout before downloading your document.</p>
+                  </div>
+                  <button onclick="setState({ showTemplateModal: false })" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                  <!-- One Pager -->
+                  <div onclick="setState({ selectedTemplate: 'one-pager' })" class="border-2 rounded-xl p-4 cursor-pointer transition-all ${state.selectedTemplate === 'one-pager' ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}">
+                    <div class="flex items-center justify-between">
+                      <p class="font-bold text-sm text-slate-800">⚡ One Pager</p>
+                      <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">Recommended</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Dense two-column setup engineered to pack maximum content onto 1 printed page.</p>
+                  </div>
+
+                  <!-- Modern -->
+                  <div onclick="setState({ selectedTemplate: 'modern' })" class="border-2 rounded-xl p-4 cursor-pointer transition-all ${state.selectedTemplate === 'modern' ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}">
+                    <p class="font-bold text-sm text-slate-800">🎨 Modern</p>
+                    <p class="text-xs text-slate-500 mt-1">Sleek sidebar layout with subtle accents. Great for tech and creative roles.</p>
+                  </div>
+
+                  <!-- Classic -->
+                  <div onclick="setState({ selectedTemplate: 'classic' })" class="border-2 rounded-xl p-4 cursor-pointer transition-all ${state.selectedTemplate === 'classic' ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}">
+                    <p class="font-bold text-sm text-slate-800">🏛️ Classic</p>
+                    <p class="text-xs text-slate-500 mt-1">Traditional serif design. Perfect for corporate, finance, or legal positions.</p>
+                  </div>
+
+                  <!-- Minimal -->
+                  <div onclick="setState({ selectedTemplate: 'minimal' })" class="border-2 rounded-xl p-4 cursor-pointer transition-all ${state.selectedTemplate === 'minimal' ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}">
+                    <p class="font-bold text-sm text-slate-800">📄 Minimal</p>
+                    <p class="text-xs text-slate-500 mt-1">Clean, spacious typography with maximum readability and ATS support.</p>
+                  </div>
+                </div>
+
+                <div class="flex justify-end gap-3 border-t pt-4">
+                  <button onclick="setState({ showTemplateModal: false })" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
+                  <button onclick="triggerDownload()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-md">
+                    Print / Save PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+          ` : ''}
         `;
       }
     }
 
-    // Initial Render
+    // Initial Load
     render();
   </script>
 </body>
