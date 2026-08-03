@@ -1,1452 +1,426 @@
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
-  <meta charset="UTF-8" />
-
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-
-  <title>Resunex — Create Your CV Free</title>
-
-  
-
-  <!-- Tailwind CSS CDN -->
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Resume & CV Builder</title>
   <script src="https://cdn.tailwindcss.com"></script>
-
-  
-
-  <!-- PDF.js CDN -->
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
-  
-
-  <!-- Mammoth.js CDN -->
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-
-
-
-  <!-- Vercel Web Analytics -->
-
-  <script defer src="/_vercel/insights/script.js"></script>
-
-
-
   <style>
-
     @media print {
-
-      body * { visibility: hidden; }
-
-      #cv-preview-card, #cv-preview-card * { visibility: visible; }
-
-      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; shadow: none; border: none; }
-
-      header, .no-print { display: none !important; }
-
-      @page { margin: 10mm; size: auto; }
-
+      body * {
+        visibility: hidden;
+      }
+      #cv-preview-card, #cv-preview-card * {
+        visibility: visible;
+      }
+      #cv-preview-card {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        border: none;
+      }
+      .no-print {
+        display: none !important;
+      }
     }
-
   </style>
-
 </head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
 
-<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
-
-
-
-  <!-- Header -->
-
+  <!-- Header / Navbar -->
   <header class="bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
-
-    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-
-      <div class="flex items-center gap-4">
-
-        <button id="backBtn" onclick="handleBack()" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">
-
-          ← Back
-
-        </button>
-
-        <span class="text-xl font-black tracking-tight text-blue-600">Resunex</span>
-
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3 cursor-pointer" onclick="setState({ page: 'builder' })">
+        <span class="text-2xl">⚡</span>
+        <h1 class="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+          Resume Builder
+        </h1>
       </div>
-
       <div class="flex items-center gap-3">
-
-        <button onclick="setState({ page: 'upload' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5">Upload CV</button>
-
-        <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-xl shadow-sm transition-all">
-
-          ⚡ Create CV
-
+        <button onclick="setState({ page: 'builder' })" class="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg">
+          Editor
         </button>
-
+        <button onclick="setState({ page: 'preview' })" class="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg">
+          Preview
+        </button>
       </div>
-
     </div>
-
   </header>
 
-
-
   <!-- Main Container -->
-
-  <main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
-
-    <!-- Dynamic Content Rendered Here -->
-
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div id="app"></div>
   </main>
 
-
-
-  <!-- Toast Notification Container -->
-
-  <div id="toast" class="fixed bottom-6 right-6 hidden z-50 no-print"></div>
-
-
-
-  <!-- JavaScript Logic -->
-
   <script>
-
-    // ─── CONFIG ───────────────────────────────────────────────
-
-    const API = "/api/claude";
-
-    const MODEL = "gemini-2.5-flash";
-
-
-
-    // ─── API HELPERS ──────────────────────────────────────────
-
-    async function callClaudeWithImage(base64, mimeType, prompt, system) {
-
-      const res = await fetch(API, {
-
-        method: "POST",
-
-        headers: { "Content-Type": "application/json" },
-
-        body: JSON.stringify({
-
-          model: MODEL,
-
-          max_tokens: 4000,
-
-          system,
-
-          messages: [{
-
-            role: "user",
-
-            content: [
-
-              { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
-
-              { type: "text", text: prompt }
-
-            ]
-
-          }]
-
-        })
-
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
-
-      return data.content?.[0]?.text || "";
-
-    }
-
-
-
-    async function callClaudeWithText(text, system) {
-
-      const res = await fetch(API, {
-
-        method: "POST",
-
-        headers: { "Content-Type": "application/json" },
-
-        body: JSON.stringify({
-
-          model: MODEL,
-
-          max_tokens: 4000,
-
-          system,
-
-          messages: [{ role: "user", content: `Parse this resume content into structured JSON:\n\n${text}` }]
-
-        })
-
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
-
-      return data.content?.[0]?.text || "";
-
-    }
-
-
-
-    // ─── ROBUST JSON REPAIR & SANITIZATION ───────────────────
-
-    function repairJsonString(rawStr) {
-
-      if (!rawStr) return "{}";
-
-      let str = rawStr.trim();
-
-      const startIdx = str.indexOf('{');
-
-      const endIdx = str.lastIndexOf('}');
-
-      if (startIdx !== -1 && endIdx !== -1) {
-
-        str = str.substring(startIdx, endIdx + 1);
-
-      }
-
-      str = str.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
-
-        return match
-
-          .replace(/\n/g, "\\n")
-
-          .replace(/\r/g, "\\r")
-
-          .replace(/\t/g, "\\t");
-
-      });
-
-      str = str.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
-
-      str = str.replace(/,\s*([}\]])/g, '$1');
-
-      return str;
-
-    }
-
-
-
-    function fileToBase64(file) {
-
-      return new Promise((resolve, reject) => {
-
-        const reader = new FileReader();
-
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-
-        reader.onerror = reject;
-
-        reader.readAsDataURL(file);
-
-      });
-
-    }
-
-
-
-    function fileToArrayBuffer(file) {
-
-      return new Promise((resolve, reject) => {
-
-        const reader = new FileReader();
-
-        reader.onload = () => resolve(reader.result);
-
-        reader.onerror = reject;
-
-        reader.readAsArrayBuffer(file);
-
-      });
-
-    }
-
-
-
-    async function extractDocxText(file) {
-
-      const arrayBuffer = await fileToArrayBuffer(file);
-
-      const result = await mammoth.extractRawText({ arrayBuffer });
-
-      return result.value || "";
-
-    }
-
-
-
-    async function pdfToBase64Image(file) {
-
-      if (typeof pdfjsLib === "undefined") {
-
-        throw new Error("PDF processing library failed to load.");
-
-      }
-
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
-      const arrayBuffer = await fileToArrayBuffer(file);
-
-      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-      const totalPages = Math.min(pdfDoc.numPages, 3);
-
-      const canvases = [];
-
-      let totalHeight = 0, maxWidth = 0;
-
-
-
-      for (let i = 1; i <= totalPages; i++) {
-
-        const page = await pdfDoc.getPage(i);
-
-        const viewport = page.getViewport({ scale: 2.0 });
-
-        const canvas = document.createElement("canvas");
-
-        canvas.width = viewport.width;
-
-        canvas.height = viewport.height;
-
-        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-
-        canvases.push(canvas);
-
-        totalHeight += viewport.height;
-
-        maxWidth = Math.max(maxWidth, viewport.width);
-
-      }
-
-
-
-      const merged = document.createElement("canvas");
-
-      merged.width = maxWidth;
-
-      merged.height = totalHeight;
-
-      const ctx = merged.getContext("2d");
-
-      ctx.fillStyle = "#fff";
-
-      ctx.fillRect(0, 0, maxWidth, totalHeight);
-
-
-
-      let y = 0;
-
-      for (const c of canvases) { 
-
-        ctx.drawImage(c, 0, y); 
-
-        y += c.height; 
-
-      }
-
-      return merged.toDataURL("image/jpeg", 0.92).split(",")[1];
-
-    }
-
-
-
-    async function extractPdfText(file) {
-
-      if (typeof pdfjsLib === "undefined") {
-
-        throw new Error("PDF processing library failed to load.");
-
-      }
-
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
-      const arrayBuffer = await fileToArrayBuffer(file);
-
-      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-      const totalPages = Math.min(pdfDoc.numPages, 5);
-
-      let fullText = "";
-
-      for (let i = 1; i <= totalPages; i++) {
-
-        const page = await pdfDoc.getPage(i);
-
-        const content = await page.getTextContent();
-
-        fullText += content.items.map(item => item.str).join(" ") + "\n";
-
-      }
-
-      return fullText.trim();
-
-    }
-
-
-
-    function atsScore(d) {
-
-      let s = 0, t = 0;
-
-      const a = (v, p) => { t += p; if (v) s += p; };
-
-      a(d.personal?.firstName && d.personal?.lastName, 5);
-
-      a(d.personal?.email, 5); 
-
-      a(d.personal?.phone, 5); 
-
-      a(d.personal?.linkedin, 3);
-
-      a(d.summary?.length > 80, 15);
-
-      a(d.experience?.some(e => e.company), 20);
-
-      a(d.experience?.some(e => e.resp?.length > 40), 10);
-
-      a(d.education?.some(e => e.college), 10);
-
-      a(d.skills?.technical?.length > 0, 10);
-
-      a(d.projects?.some(p => p.name), 7);
-
-      a(d.achievements?.awards || d.achievements?.hackathons, 5);
-
-      a(d.skills?.certifications?.length > 0, 5);
-
-      return Math.round((s / t) * 100) || 0;
-
-    }
-
-
-
-    function blankData() {
-
-      return {
-
-        personal: { firstName: "", lastName: "", email: "", phone: "", city: "", state: "", country: "", linkedin: "", github: "", portfolio: "" },
-
-        summary: "",
-
-        education: [{ id: 1, college: "", degree: "", spec: "", cgpa: "", from: "", to: "", desc: "" }],
-
-        experience: [{ id: 1, company: "", title: "", type: "Full-time", location: "", from: "", to: "", current: false, resp: "" }],
-
-        projects: [{ id: 1, name: "", desc: "", tech: "", github: "", live: "" }],
-
-        skills: { technical: [], soft: [], languages: [], certifications: [] },
-
-        achievements: { awards: "", hackathons: "", publications: "", patents: "" }
-
-      };
-
-    }
-
-
-
-    // ─── STATE MANAGEMENT ────────────────────────────────────────
-
+    // Application State
     let state = {
-
-      page: "landing",
-
-      selectedTemplate: "one-pager",
-
-      showTemplateModal: false,
-
-      data: blankData(),
-
-      toast: null,
-
-      uploadProgress: null,
-
-      uploadMessage: ""
-
+      page: 'builder', // 'builder' or 'preview'
+      selectedTemplate: 'one-pager', // 'one-pager', 'modern', 'classic', 'minimal'
+      data: {
+        personal: {
+          firstName: 'John',
+          lastName: 'Doe',
+          email: 'john.doe@example.com',
+          phone: '+1 (555) 019-2834',
+          linkedin: 'linkedin.com/in/johndoe',
+          github: 'github.com/johndoe'
+        },
+        summary: 'Results-driven Professional with experience in developing scalable applications, optimizing workflow automation, and delivering data-driven solutions.',
+        experience: [
+          {
+            id: 1,
+            company: 'Tech Solutions Inc.',
+            title: 'Senior Developer',
+            from: 'Jan 2022',
+            to: 'Present',
+            resp: 'Led a team of 5 engineers building modern web applications. Improved pipeline speed by 40%.'
+          }
+        ],
+        education: [
+          {
+            id: 1,
+            college: 'State University',
+            degree: 'B.S.',
+            spec: 'Computer Science',
+            from: '2017',
+            to: '2021'
+          }
+        ],
+        skills: {
+          technical: ['JavaScript', 'Tailwind CSS', 'HTML5', 'Node.js', 'Git'],
+          soft: ['Problem Solving', 'Team Leadership', 'Agile Methodologies']
+        }
+      }
     };
 
-
-
-    function setState(patch) { 
-
-      state = { ...state, ...patch }; 
-
-      render(); 
-
+    // State Mutators
+    function setState(newState) {
+      state = { ...state, ...newState };
+      render();
     }
-
-
-
-    function handleBack() {
-
-      if (state.page === "preview") setState({ page: "builder" });
-
-      else if (state.page === "builder" || state.page === "upload") setState({ page: "landing" });
-
-    }
-
-
 
     function updData(path, val) {
-
-      const n = JSON.parse(JSON.stringify(state.data));
-
-      const keys = path.split(".");
-
-      let cur = n;
-
-      for (let i = 0; i < keys.length - 1; i++) {
-
-        if (!cur[keys[i]]) cur[keys[i]] = {};
-
-        cur = cur[keys[i]];
-
+      const parts = path.split('.');
+      let obj = state.data;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!obj[parts[i]]) obj[parts[i]] = {};
+        obj = obj[parts[i]];
       }
-
-      cur[keys[keys.length - 1]] = val;
-
-      state.data = n; 
-
+      obj[parts[parts.length - 1]] = val;
       render();
-
     }
 
-
-
-    function addItem(section, itemSchema) {
-
-      const list = [...(state.data[section] || [])];
-
-      list.push({ ...itemSchema, id: Date.now() });
-
-      updData(section, list);
-
-    }
-
-
-
-    function removeItem(section, idx) {
-
-      const list = [...(state.data[section] || [])];
-
-      list.splice(idx, 1);
-
-      updData(section, list);
-
-    }
-
-
-
-    function updateArrayItem(section, idx, field, val) {
-
-      const list = JSON.parse(JSON.stringify(state.data[section] || []));
-
-      if (list[idx]) {
-
-        list[idx][field] = val;
-
-        updData(section, list);
-
-      }
-
-    }
-
-
-
-    let toastTimer = null;
-
-    function showToast(msg, type = "ok") {
-
-      if (toastTimer) clearTimeout(toastTimer);
-
-      state.toast = { msg, type }; 
-
+    function updateArrayItem(section, index, field, value) {
+      state.data[section][index][field] = value;
       render();
-
-      toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
-
     }
 
+    function addItem(section, defaultItem) {
+      if (!state.data[section]) state.data[section] = [];
+      state.data[section].push(defaultItem);
+      render();
+    }
 
+    function removeItem(section, index) {
+      state.data[section].splice(index, 1);
+      render();
+    }
 
-    // ─── DOWNLOAD & ANALYTICS TRIGGER ─────────────────────────────
+    // Helper: ATS Score Calculator
+    function atsScore(d) {
+      let score = 0;
+      if (d.personal?.firstName && d.personal?.lastName) score += 15;
+      if (d.personal?.email && d.personal?.phone) score += 15;
+      if (d.summary && d.summary.length > 30) score += 20;
+      if (d.experience && d.experience.length > 0) score += 25;
+      if (d.education && d.education.length > 0) score += 15;
+      if (d.skills?.technical && d.skills.technical.length > 0) score += 10;
+      return score;
+    }
 
     function triggerDownload() {
-
-      setState({ showTemplateModal: false });
-
-      
-
-      // Track Download Event in Vercel Analytics
-
-      if (window.va) {
-
-        window.va('event', { 
-
-          name: 'CV Downloaded', 
-
-          data: { template: state.selectedTemplate } 
-
-        });
-
-      }
-
-
-
-      setTimeout(() => { window.print(); }, 200);
-
+      window.print();
     }
 
-
-
-    // ─── FILE UPLOAD PROCESSOR ──────────────────────────────────
-
-    async function handleFileUpload(file) {
-
-      if (!file) return;
-
-      setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
-
-
-
-      const systemPrompt = "Extract structured resume details into valid JSON matching the exact schema requested.";
-
-
-
-      try {
-
-        let jsonStr = "";
-
-        const fileType = file.name.split('.').pop().toLowerCase();
-
-
-
-        if (fileType === "pdf") {
-
-          setState({ uploadProgress: 40, uploadMessage: "Rendering PDF pages..." });
-
-          try {
-
-            const rawText = await extractPdfText(file);
-
-            if (rawText && rawText.length > 100) {
-
-              setState({ uploadProgress: 60, uploadMessage: "Analyzing text structure..." });
-
-              jsonStr = await callClaudeWithText(rawText, systemPrompt);
-
-            } else {
-
-              throw new Error("Text layer empty, switching to OCR...");
-
-            }
-
-          } catch (e) {
-
-            setState({ uploadProgress: 50, uploadMessage: "Processing scanned image..." });
-
-            const base64Img = await pdfToBase64Image(file);
-
-            setState({ uploadProgress: 75, uploadMessage: "AI visual extraction..." });
-
-            jsonStr = await callClaudeWithImage(base64Img, "image/jpeg", "Extract structured JSON from this resume image.", systemPrompt);
-
-          }
-
-        } else if (fileType === "docx") {
-
-          setState({ uploadProgress: 50, uploadMessage: "Extracting Word document..." });
-
-          const text = await extractDocxText(file);
-
-          setState({ uploadProgress: 75, uploadMessage: "Parsing data with AI..." });
-
-          jsonStr = await callClaudeWithText(text, systemPrompt);
-
-        } else if (["jpg", "jpeg", "png", "webp"].includes(fileType)) {
-
-          setState({ uploadProgress: 50, uploadMessage: "Encoding image..." });
-
-          const base64 = await fileToBase64(file);
-
-          const mime = file.type || `image/${fileType}`;
-
-          setState({ uploadProgress: 75, uploadMessage: "Parsing visual data..." });
-
-          jsonStr = await callClaudeWithImage(base64, mime, "Extract JSON from resume image.", systemPrompt);
-
-        } else {
-
-          throw new Error("Unsupported file format.");
-
-        }
-
-
-
-        setState({ uploadProgress: 90, uploadMessage: "Structuring resume..." });
-
-
-
-        const cleanJsonStr = repairJsonString(jsonStr);
-
-        const parsed = JSON.parse(cleanJsonStr);
-
-
-
-        setState({
-
-          data: { ...blankData(), ...parsed },
-
-          page: "builder",
-
-          uploadProgress: null,
-
-          uploadMessage: ""
-
-        });
-
-        showToast("Resume parsed successfully!");
-
-
-
-      } catch (err) {
-
-        console.error("Upload error:", err);
-
-        setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` });
-
-      }
-
-    }
-
-
-
-    // ─── TEMPLATE RENDERERS ─────────────────────────────────────
-
+    // Render CV Preview HTML according to active template
     function renderCVContent() {
-
       const d = state.data;
-
-      const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
-
-      const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
-
-      const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
-
-      const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
-
       const t = state.selectedTemplate;
 
-
-
-      // 1. ONE PAGER TEMPLATE
-
-      if (t === 'one-pager') {
-
+      if (t === 'minimal') {
         return `
-
-          <div class="space-y-4 text-xs leading-tight">
-
-            <!-- Compact Header -->
-
-            <div class="border-b border-slate-300 pb-2">
-
-              <h1 class="text-2xl font-black text-slate-900 tracking-tight uppercase">${fullName}</h1>
-
-              <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600 font-medium mt-1">
-
-                ${d.personal?.email ? `<span>✉️ ${d.personal.email}</span>` : ''}
-
-                ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
-
-                ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
-
-                ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
-
-              </div>
-
+          <div class="space-y-6 text-slate-800 font-mono text-xs">
+            <div class="border-b border-slate-300 pb-4">
+              <h1 class="text-2xl font-bold uppercase tracking-wider">${d.personal?.firstName || ''} ${d.personal?.lastName || ''}</h1>
+              <p class="text-slate-500 mt-1">${d.personal?.email || ''} | ${d.personal?.phone || ''} | ${d.personal?.linkedin || ''}</p>
             </div>
-
-
-
-            <!-- Summary -->
-
-            ${d.summary ? `
-
-              <div>
-
-                <p class="text-slate-700 leading-snug">${d.summary}</p>
-
-              </div>
-
-            ` : ''}
-
-
-
-            <!-- Dense Two Column Layout -->
-
-            <div class="grid grid-cols-12 gap-4">
-
-              <!-- Left Column: Experience & Projects (7 cols) -->
-
-              <div class="col-span-7 space-y-3">
-
-                ${d.experience?.length ? `
-
-                  <div>
-
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Experience</h2>
-
-                    <div class="space-y-2">
-
-                      ${d.experience.map(e => `
-
-                        <div>
-
-                          <div class="flex justify-between items-baseline font-bold text-slate-800">
-
-                            <span>${e.title || 'Role'} ${e.company ? `| ${e.company}` : ''}</span>
-
-                            <span class="text-[10px] text-slate-500 font-normal">${e.from || ''} - ${e.to || ''}</span>
-
-                          </div>
-
-                          <p class="text-slate-600 mt-0.5 text-[11px] leading-snug">${e.resp || ''}</p>
-
-                        </div>
-
-                      `).join('')}
-
-                    </div>
-
-                  </div>
-
-                ` : ''}
-
-
-
-                ${d.projects?.length ? `
-
-                  <div>
-
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Key Projects</h2>
-
-                    <div class="space-y-2">
-
-                      ${d.projects.map(p => `
-
-                        <div>
-
-                          <div class="flex justify-between items-baseline font-bold text-slate-800">
-
-                            <span>${p.name || 'Project'}</span>
-
-                            ${p.tech ? `<span class="text-[10px] text-blue-600 font-medium">${p.tech}</span>` : ''}
-
-                          </div>
-
-                          <p class="text-slate-600 text-[11px] leading-snug">${p.desc || ''}</p>
-
-                        </div>
-
-                      `).join('')}
-
-                    </div>
-
-                  </div>
-
-                ` : ''}
-
-              </div>
-
-
-
-              <!-- Right Column: Education & Skills (5 cols) -->
-
-              <div class="col-span-5 space-y-3 border-l border-slate-100 pl-3">
-
-                ${d.education?.length ? `
-
-                  <div>
-
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Education</h2>
-
-                    <div class="space-y-2">
-
-                      ${d.education.map(e => `
-
-                        <div>
-
-                          <div class="font-bold text-slate-800">${e.degree || ''} ${e.spec || ''}</div>
-
-                          <div class="text-slate-600 text-[11px]">${e.college || ''}</div>
-
-                          <div class="text-[10px] text-slate-400">${e.from || ''} - ${e.to || ''}</div>
-
-                        </div>
-
-                      `).join('')}
-
-                    </div>
-
-                  </div>
-
-                ` : ''}
-
-
-
-                ${techSkills.length || softSkills.length ? `
-
-                  <div>
-
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Skills</h2>
-
-                    <div class="space-y-1.5">
-
-                      ${techSkills.length ? `
-
-                        <div>
-
-                          <span class="font-semibold text-slate-700 text-[11px]">Technical:</span>
-
-                          <p class="text-slate-600 text-[11px] leading-tight">${techSkills.join(", ")}</p>
-
-                        </div>
-
-                      ` : ''}
-
-                      ${softSkills.length ? `
-
-                        <div>
-
-                          <span class="font-semibold text-slate-700 text-[11px]">Soft Skills:</span>
-
-                          <p class="text-slate-600 text-[11px] leading-tight">${softSkills.join(", ")}</p>
-
-                        </div>
-
-                      ` : ''}
-
-                    </div>
-
-                  </div>
-
-                ` : ''}
-
-
-
-                ${certs.length ? `
-
-                  <div>
-
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-1 tracking-wider">Certifications</h2>
-
-                    <ul class="list-disc list-inside text-slate-600 text-[11px] space-y-0.5">
-
-                      ${certs.map(c => `<li>${c}</li>`).join('')}
-
-                    </ul>
-
-                  </div>
-
-                ` : ''}
-
-              </div>
-
+            ${d.summary ? `<div><h2 class="font-bold uppercase text-slate-400 mb-1">// Summary</h2><p>${d.summary}</p></div>` : ''}
+            <div>
+              <h2 class="font-bold uppercase text-slate-400 mb-2">// Experience</h2>
+              ${(d.experience || []).map(e => `
+                <div class="mb-3">
+                  <div class="flex justify-between font-bold"><span>${e.title || ''} @ ${e.company || ''}</span><span>${e.from || ''} - ${e.to || ''}</span></div>
+                  <p class="mt-1 text-slate-600">${e.resp || ''}</p>
+                </div>
+              `).join('')}
             </div>
-
+            <div>
+              <h2 class="font-bold uppercase text-slate-400 mb-2">// Education</h2>
+              ${(d.education || []).map(e => `
+                <div class="flex justify-between"><span>${e.degree || ''} ${e.spec || ''}, ${e.college || ''}</span><span>${e.from || ''} - ${e.to || ''}</span></div>
+              `).join('')}
+            </div>
           </div>
-
         `;
-
       }
-
-
-
-      // 2. MODERN TEMPLATE
-
-      if (t === 'modern') {
-
-        return `
-
-          <div class="grid grid-cols-3 gap-6 text-sm">
-
-            <div class="col-span-1 bg-slate-100/70 p-4 rounded-xl space-y-4">
-
-              <div>
-
-                <h1 class="text-xl font-bold text-slate-900">${fullName}</h1>
-
-                <div class="text-xs text-slate-600 space-y-1 mt-2">
-
-                  ${d.personal?.email ? `<p>✉️ ${d.personal.email}</p>` : ''}
-
-                  ${d.personal?.phone ? `<p>📞 ${d.personal.phone}</p>` : ''}
-
-                  ${d.personal?.linkedin ? `<p>🔗 ${d.personal.linkedin}</p>` : ''}
-
-                  ${d.personal?.github ? `<p>💻 ${d.personal.github}</p>` : ''}
-
-                </div>
-
-              </div>
-
-
-
-              ${techSkills.length || softSkills.length ? `
-
-                <div class="border-t border-slate-200 pt-3">
-
-                  <h3 class="font-bold text-slate-800 text-xs uppercase mb-2">Skills</h3>
-
-                  <div class="flex flex-wrap gap-1">
-
-                    ${[...techSkills, ...softSkills].map(s => `<span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded font-medium">${s}</span>`).join('')}
-
-                  </div>
-
-                </div>
-
-              ` : ''}
-
-
-
-              ${d.education?.length ? `
-
-                <div class="border-t border-slate-200 pt-3 space-y-2">
-
-                  <h3 class="font-bold text-slate-800 text-xs uppercase">Education</h3>
-
-                  ${d.education.map(e => `
-
-                    <div>
-
-                      <p class="font-semibold text-xs text-slate-800">${e.degree || ''} ${e.spec || ''}</p>
-
-                      <p class="text-[11px] text-slate-600">${e.college || ''}</p>
-
-                      <p class="text-[10px] text-slate-400">${e.from || ''} - ${e.to || ''}</p>
-
-                    </div>
-
-                  `).join('')}
-
-                </div>
-
-              ` : ''}
-
-            </div>
-
-
-
-            <div class="col-span-2 space-y-4">
-
-              ${d.summary ? `
-
-                <div>
-
-                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">About Me</h2>
-
-                  <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
-
-                </div>
-
-              ` : ''}
-
-
-
-              ${d.experience?.length ? `
-
-                <div>
-
-                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Experience</h2>
-
-                  <div class="space-y-3">
-
-                    ${d.experience.map(e => `
-
-                      <div class="border-l-2 border-blue-500 pl-3">
-
-                        <p class="font-bold text-sm text-slate-800">${e.title || 'Role'} <span class="text-xs font-normal text-slate-500">at ${e.company || ''}</span></p>
-
-                        <p class="text-[10px] text-slate-400 mb-1">${e.from || ''} - ${e.to || ''}</p>
-
-                        <p class="text-xs text-slate-600">${e.resp || ''}</p>
-
-                      </div>
-
-                    `).join('')}
-
-                  </div>
-
-                </div>
-
-              ` : ''}
-
-
-
-              ${d.projects?.length ? `
-
-                <div>
-
-                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Projects</h2>
-
-                  <div class="space-y-2">
-
-                    ${d.projects.map(p => `
-
-                      <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-
-                        <p class="font-semibold text-xs text-slate-800">${p.name || ''}</p>
-
-                        <p class="text-[11px] text-slate-600 mt-0.5">${p.desc || ''}</p>
-
-                      </div>
-
-                    `).join('')}
-
-                  </div>
-
-                </div>
-
-              ` : ''}
-
-            </div>
-
-          </div>
-
-        `;
-
-      }
-
-
-
-      // 3. CLASSIC TEMPLATE
 
       if (t === 'classic') {
-
         return `
-
-          <div class="space-y-4 font-serif text-sm">
-
-            <div class="text-center border-b pb-3">
-
-              <h1 class="text-2xl font-bold uppercase tracking-wide text-slate-900">${fullName}</h1>
-
-              <div class="text-xs text-slate-600 flex justify-center gap-3 mt-1">
-
-                ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
-
-                ${d.personal?.phone ? `<span>• ${d.personal.phone}</span>` : ''}
-
-                ${d.personal?.linkedin ? `<span>• ${d.personal.linkedin}</span>` : ''}
-
+          <div class="space-y-6 text-slate-900 font-serif">
+            <div class="text-center border-b-2 border-slate-800 pb-4">
+              <h1 class="text-3xl font-bold tracking-tight">${d.personal?.firstName || ''} ${d.personal?.lastName || ''}</h1>
+              <div class="text-sm text-slate-600 mt-2 space-x-2">
+                <span>${d.personal?.email || ''}</span> • 
+                <span>${d.personal?.phone || ''}</span> • 
+                <span>${d.personal?.linkedin || ''}</span>
               </div>
-
             </div>
-
-
-
-            ${d.summary ? `
-
-              <div>
-
-                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-1">Executive Summary</h2>
-
-                <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
-
-              </div>
-
-            ` : ''}
-
-
-
-            ${d.experience?.length ? `
-
-              <div>
-
-                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-2">Professional Experience</h2>
-
-                <div class="space-y-3">
-
-                  ${d.experience.map(e => `
-
-                    <div>
-
-                      <div class="flex justify-between font-bold text-xs text-slate-800">
-
-                        <span>${e.title || 'Role'} — ${e.company || ''}</span>
-
-                        <span>${e.from || ''} – ${e.to || ''}</span>
-
-                      </div>
-
-                      <p class="text-xs text-slate-600 mt-1">${e.resp || ''}</p>
-
-                    </div>
-
-                  `).join('')}
-
+            ${d.summary ? `<div><h2 class="text-lg font-bold border-b border-slate-300 uppercase tracking-wide mb-2">Professional Summary</h2><p class="text-sm leading-relaxed">${d.summary}</p></div>` : ''}
+            <div>
+              <h2 class="text-lg font-bold border-b border-slate-300 uppercase tracking-wide mb-3">Experience</h2>
+              ${(d.experience || []).map(e => `
+                <div class="mb-4">
+                  <div class="flex justify-between items-baseline"><h3 class="font-bold text-base">${e.company || ''}</h3><span class="text-sm italic text-slate-600">${e.from || ''} – ${e.to || ''}</span></div>
+                  <div class="italic text-sm font-semibold text-slate-700">${e.title || ''}</div>
+                  <p class="text-sm mt-1 text-slate-800 leading-normal">${e.resp || ''}</p>
                 </div>
-
-              </div>
-
-            ` : ''}
-
-
-
-            ${d.education?.length ? `
-
-              <div>
-
-                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-2">Education</h2>
-
-                <div class="space-y-2">
-
-                  ${d.education.map(e => `
-
-                    <div class="flex justify-between text-xs">
-
-                      <div>
-
-                        <span class="font-bold">${e.college || ''}</span> — ${e.degree || ''} ${e.spec || ''}
-
-                      </div>
-
-                      <span class="text-slate-500">${e.from || ''} – ${e.to || ''}</span>
-
-                    </div>
-
-                  `).join('')}
-
-                </div>
-
-              </div>
-
-            ` : ''}
-
+              `).join('')}
+            </div>
+            <div>
+              <h2 class="text-lg font-bold border-b border-slate-300 uppercase tracking-wide mb-3">Education</h2>
+              ${(d.education || []).map(e => `
+                <div class="flex justify-between items-baseline mb-2"><span class="font-bold text-sm">${e.college || ''} — <i>${e.degree || ''} ${e.spec || ''}</i></span><span class="text-sm italic">${e.from || ''} – ${e.to || ''}</span></div>
+              `).join('')}
+            </div>
           </div>
-
         `;
-
       }
 
-
-
-      // 4. MINIMAL TEMPLATE
-
+      // Default: Modern / One-Pager
       return `
-
-        <div class="space-y-5 text-sm font-sans">
-
-          <div>
-
-            <h1 class="text-3xl font-light text-slate-900 tracking-tight">${fullName}</h1>
-
-            <div class="flex gap-4 text-xs text-slate-400 mt-2">
-
-              ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
-
-              ${d.personal?.phone ? `<span>${d.personal.phone}</span>` : ''}
-
-              ${d.personal?.linkedin ? `<span>${d.personal.linkedin}</span>` : ''}
-
+        <div class="space-y-6 text-slate-800 font-sans">
+          <div class="border-b border-slate-200 pb-4">
+            <h1 class="text-3xl font-black text-slate-900">${d.personal?.firstName || ''} ${d.personal?.lastName || ''}</h1>
+            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 font-medium mt-2">
+              ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
+              ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
+              ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
+              ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
             </div>
-
           </div>
 
-
-
-          ${d.summary ? `<p class="text-xs text-slate-600 leading-relaxed">${d.summary}</p>` : ''}
-
-
-
-          ${d.experience?.length ? `
-
-            <div class="space-y-3">
-
-              <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Experience</h2>
-
-              ${d.experience.map(e => `
-
-                <div class="space-y-1">
-
-                  <div class="flex justify-between text-xs">
-
-                    <span class="font-medium text-slate-800">${e.title || ''}</span>
-
-                    <span class="text-slate-400">${e.from || ''} — ${e.to || ''}</span>
-
-                  </div>
-
-                  <p class="text-xs text-slate-500">${e.company || ''}</p>
-
-                  <p class="text-xs text-slate-600 pt-1">${e.resp || ''}</p>
-
-                </div>
-
-              `).join('')}
-
+          ${d.summary ? `
+            <div>
+              <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Profile</h2>
+              <p class="text-xs text-slate-600 leading-relaxed">${d.summary}</p>
             </div>
-
           ` : ''}
 
-        </div>
-
-      `;
-
-    }
-
-
-
-    // ─── RENDER ENGINE ──────────────────────────────────────────
-
-    function render() {
-
-      const app = document.getElementById("app");
-
-      const backBtn = document.getElementById("backBtn");
-
-      
-
-      backBtn.classList.toggle("hidden", state.page === "landing");
-
-
-
-      // Toast UI
-
-      const toastEl = document.getElementById("toast");
-
-      if (state.toast) {
-
-        toastEl.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm flex items-center gap-2 ${
-
-          state.toast.type === "ok" ? "bg-emerald-600" : "bg-red-600"
-
-        }`;
-
-        toastEl.innerHTML = state.toast.msg;
-
-        toastEl.classList.remove("hidden");
-
-      } else {
-
-        toastEl.classList.add("hidden");
-
-      }
-
-
-
-      // Page Router
-
-      if (state.page === "landing") {
-
-        app.innerHTML = `
-
-          <div class="text-center py-16 max-w-3xl mx-auto space-y-6">
-
-            <span class="bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1 rounded-full border border-blue-100">✨ Zero fees · No signup · AI-powered</span>
-
-            <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
-
-              Create your CV in minutes — <span class="text-blue-600">100% free, always.</span>
-
-            </h1>
-
-            <p class="text-slate-600 text-lg">Upload your existing CV to auto-fill, or build from scratch with AI assistance.</p>
-
-            <div class="flex items-center justify-center gap-4 pt-4">
-
-              <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3.5 rounded-xl shadow-md transition-all">
-
-                ⚡ Build My CV — Free
-
-              </button>
-
-              <button onclick="setState({ page: 'upload' })" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-6 py-3.5 rounded-xl transition-all">
-
-                📄 Upload & Reformat CV
-
-              </button>
-
+          <div>
+            <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-3">Work Experience</h2>
+            <div class="space-y-4">
+              ${(d.experience || []).map(e => `
+                <div>
+                  <div class="flex justify-between items-baseline">
+                    <span class="font-bold text-sm text-slate-900">${e.title || 'Job Title'}</span>
+                    <span class="text-[10px] font-semibold text-slate-400">${e.from || ''} - ${e.to || ''}</span>
+                  </div>
+                  <div class="text-xs font-medium text-slate-500 mb-1">${e.company || ''}</div>
+                  <p class="text-xs text-slate-600 leading-normal">${e.resp || ''}</p>
+                </div>
+              `).join('')}
             </div>
-
           </div>
 
-        `;
+          <div>
+            <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Education</h2>
+            <div class="space-y-2">
+              ${(d.education || []).map(e => `
+                <div class="flex justify-between text-xs">
+                  <div>
+                    <span class="font-bold text-slate-800">${e.degree || ''} ${e.spec ? `in ${e.spec}` : ''}</span>
+                    <span class="text-slate-500"> • ${e.college || ''}</span>
+                  </div>
+                  <span class="text-slate-400 font-medium text-[10px]">${e.from || ''} - ${e.to || ''}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
 
-      } else if (state.page === "upload") {
+          ${(d.skills?.technical?.length > 0 || d.skills?.soft?.length > 0) ? `
+            <div>
+              <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Skills</h2>
+              <div class="flex flex-wrap gap-1.5">
+                ${(d.skills?.technical || []).map(s => `<span class="bg-slate-100 text-slate-700 text-[11px] font-medium px-2 py-0.5 rounded">${s}</span>`).join('')}
+                ${(d.skills?.soft || []).map(s => `<span class="bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-0.5 rounded">${s}</span>`).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // Main App Renderer
+    function render() {
+      const app = document.getElementById("app");
+
+      if (state.page === "builder") {
+        const d = state.data;
+        const score = atsScore(d);
 
         app.innerHTML = `
-
-          <div class="max-w-2xl mx-auto w-full space-y-6">
-
-            <div class="text-center space-y-2">
-
-              <h2 class="text-3xl font-bold text-slate-900">Upload Your CV</h2>
-
-              <p class="text-slate-500 text-sm">Upload your resume and AI will extract all your details automatically.</p>
-
-            </div>
-
-
-
-            <div id="dropZone" class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/50 rounded-2xl p-10 text-center transition-all cursor-pointer">
-
-              <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" class="hidden" onchange="handleFileUpload(this.files[0])"/>
-
-              <div onclick="document.getElementById('fileInput').click()" class="space-y-4">
-
-                <div class="w-16 h-16 bg-white rounded-full shadow-sm mx-auto flex items-center justify-center text-blue-600">☁️</div>
-
-                <div>
-
-                  <p class="font-semibold text-slate-700">Drag & drop your resume here</p>
-
-                  <p class="text-xs text-slate-400 mt-1">or click below to browse</p>
-
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <!-- Left Column: Form Editor (7 cols) -->
+            <div class="lg:col-span-7 space-y-6">
+              
+              <!-- Personal Info -->
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">👤 Personal Details</h3>
+                <div class="grid grid-cols-2 gap-4">
+                  <input type="text" placeholder="First Name" value="${d.personal?.firstName || ''}" oninput="updData('personal.firstName', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input type="text" placeholder="Last Name" value="${d.personal?.lastName || ''}" oninput="updData('personal.lastName', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input type="email" placeholder="Email" value="${d.personal?.email || ''}" oninput="updData('personal.email', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input type="text" placeholder="Phone" value="${d.personal?.phone || ''}" oninput="updData('personal.phone', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input type="text" placeholder="LinkedIn URL" value="${d.personal?.linkedin || ''}" oninput="updData('personal.linkedin', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+                  <input type="text" placeholder="GitHub URL" value="${d.personal?.github || ''}" oninput="updData('personal.github', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                 </div>
+              </div>
 
-                <button type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all">
+              <!-- Summary -->
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">📝 Professional Summary</h3>
+                <textarea rows="3" placeholder="Brief executive summary..." oninput="updData('summary', this.value)" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">${d.summary || ''}</textarea>
+              </div>
 
-                  📁 Choose File
+              <!-- Experience -->
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex justify-between items-center">
+                  <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">💼 Experience</h3>
+                  <button onclick="addItem('experience', { id: Date.now(), company: '', title: '', from: '', to: '', resp: '' })" class="text-xs bg-blue-50 text-blue-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-all">+ Add Position</button>
+                </div>
+                <div class="space-y-4">
+                  ${(d.experience || []).map((e, idx) => `
+                    <div class="p-4 border border-slate-100 bg-slate-50 rounded-xl space-y-3 relative group">
+                      <button onclick="removeItem('experience', ${idx})" class="absolute top-2 right-2 text-slate-400 hover:text-red-500 text-xs p-1">✕ Remove</button>
+                      <div class="grid grid-cols-2 gap-3">
+                        <input type="text" placeholder="Company Name" value="${e.company || ''}" oninput="updateArrayItem('experience', ${idx}, 'company', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                        <input type="text" placeholder="Job Title" value="${e.title || ''}" oninput="updateArrayItem('experience', ${idx}, 'title', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                        <input type="text" placeholder="From (e.g. Jan 2022)" value="${e.from || ''}" oninput="updateArrayItem('experience', ${idx}, 'from', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                        <input type="text" placeholder="To (e.g. Present)" value="${e.to || ''}" oninput="updateArrayItem('experience', ${idx}, 'to', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                      </div>
+                      <textarea rows="2" placeholder="Responsibilities & accomplishments..." oninput="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white">${e.resp || ''}</textarea>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
 
-                </button>
+              <!-- Education -->
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <div class="flex justify-between items-center">
+                  <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">🎓 Education</h3>
+                  <button onclick="addItem('education', { id: Date.now(), college: '', degree: '', spec: '', from: '', to: '' })" class="text-xs bg-blue-50 text-blue-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-all">+ Add Education</button>
+                </div>
+                <div class="space-y-4">
+                  ${(d.education || []).map((e, idx) => `
+                    <div class="p-4 border border-slate-100 bg-slate-50 rounded-xl space-y-3 relative">
+                      <button onclick="removeItem('education', ${idx})" class="absolute top-2 right-2 text-slate-400 hover:text-red-500 text-xs p-1">✕ Remove</button>
+                      <div class="grid grid-cols-2 gap-3">
+                        <input type="text" placeholder="Institution / College" value="${e.college || ''}" oninput="updateArrayItem('education', ${idx}, 'college', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                        <input type="text" placeholder="Degree (e.g. B.Tech)" value="${e.degree || ''}" oninput="updateArrayItem('education', ${idx}, 'degree', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                        <input type="text" placeholder="Specialization" value="${e.spec || ''}" oninput="updateArrayItem('education', ${idx}, 'spec', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                        <div class="flex gap-2">
+                          <input type="text" placeholder="From" value="${e.from || ''}" oninput="updateArrayItem('education', ${idx}, 'from', this.value)" class="w-1/2 p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                          <input type="text" placeholder="To" value="${e.to || ''}" oninput="updateArrayItem('education', ${idx}, 'to', this.value)" class="w-1/2 p-2 border border-slate-200 rounded-lg text-sm bg-white" />
+                        </div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
 
+              <!-- Skills -->
+              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">🛠️ Skills & Certifications</h3>
+                <div class="space-y-3">
+                  <div>
+                    <label class="text-xs font-semibold text-slate-600 uppercase">Technical Skills (comma separated)</label>
+                    <input type="text" value="${(d.skills?.technical || []).join(', ')}" onchange="updData('skills.technical', this.value.split(',').map(s=>s.trim()).filter(Boolean))" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mt-1" />
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold text-slate-600 uppercase">Soft Skills (comma separated)</label>
+                    <input type="text" value="${(d.skills?.soft || []).join(', ')}" onchange="updData('skills.soft', this.value.split(',').map(s=>s.trim()).filter(Boolean))" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mt-1" />
+                  </div>
+                </div>
               </div>
 
             </div>
 
+            <!-- Right Column: Live Preview & Floating Action Bar (5 cols) -->
+            <div class="lg:col-span-5 space-y-4">
+              <div class="sticky top-20 space-y-4">
+                
+                <!-- Action Header -->
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                  <div>
+                    <div class="text-xs font-semibold text-slate-400 uppercase">ATS Compatibility</div>
+                    <div class="text-xl font-black ${score >= 70 ? 'text-emerald-600' : 'text-amber-500'}">${score}%</div>
+                  </div>
+                  <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
+                    📄 Export / Download
+                  </button>
+                </div>
 
+                <!-- Template Selector Tabs -->
+                <div class="bg-slate-200 p-1 rounded-xl flex gap-1 text-xs font-medium">
+                  <button onclick="setState({ selectedTemplate: 'one-pager' })" class="flex-1 py-1.5 rounded-lg text-center ${state.selectedTemplate === 'one-pager' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">One-Pager</button>
+                  <button onclick="setState({ selectedTemplate: 'modern' })" class="flex-1 py-1.5 rounded-lg text-center ${state.selectedTemplate === 'modern' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">Modern</button>
+                  <button onclick="setState({ selectedTemplate: 'classic' })" class="flex-1 py-1.5 rounded-lg text-center ${state.selectedTemplate === 'classic' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">Classic</button>
+                  <button onclick="setState({ selectedTemplate: 'minimal' })" class="flex-1 py-1.5 rounded-lg text-center ${state.selectedTemplate === 'minimal' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">Minimal</button>
+                </div>
 
-            ${state.uploadMessage ? `
+                <!-- Preview Container -->
+                <div id="cv-preview-card" class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[600px] overflow-auto">
+                  ${renderCVContent()}
+                </div>
 
-              <p class="text-center text-sm font-medium ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-blue-600'}">
-
-                ${state.uploadMessage}
-
-              </p>
-
-            ` : ''}
-
+              </div>
+            </div>
           </div>
-
         `;
+      } else if (state.page === "preview") {
+        app.innerHTML = `
+          <div class="max-w-4xl mx-auto space-y-6">
+            <div class="flex justify-between items-center no-print">
+              <h2 class="text-2xl font-bold text-slate-900">Final CV Preview</h2>
+              <button onclick="triggerDownload()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
+                🖨️ Print / Save as PDF
+              </button>
+            </div>
+            <div id="cv-preview-card" class="bg-white p-10 rounded-2xl border border-slate-200 shadow-md min-h-[800px]">
+              ${renderCVContent()}
+            </div>
+          </div>
+        `;
+      }
+    }
 
-      } else if (st 
-
+    // Initial render call
+    render();
+  </script>
+</body>
+</html>
