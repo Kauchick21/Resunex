@@ -62,7 +62,8 @@
     const MODEL = "gemini-2.5-flash";
 
     const SYSTEM_PARSER_PROMPT = `
-Extract structured resume details into valid JSON matching this schema:
+You are a precise resume parser. Return ONLY a valid JSON object without markdown fences, comments, or intro/outro text.
+JSON Structure:
 {
   "personal": { "firstName": "", "lastName": "", "email": "", "phone": "", "city": "", "state": "", "country": "", "linkedin": "", "github": "", "portfolio": "" },
   "summary": "",
@@ -73,10 +74,10 @@ Extract structured resume details into valid JSON matching this schema:
   "achievements": { "awards": "", "hackathons": "", "publications": "", "patents": "" }
 }
 
-IMPORTANT INSTRUCTIONS FOR EXTRACTION:
-1. WORK EXPERIENCE DATES: If an end date ("to") is missing, active, or indicated as "Present", "Current", "Till Date", or ongoing, set "current": true and "to": "Present".
-2. RESPONSIBILITIES: Convert all job descriptions and experience details into clear, bulleted statements separated by newlines. Start each line with "• ". Do not lump paragraphs together.
-3. SKILLS: Extract technical skills, soft skills, and certifications into arrays.
+RULES:
+1. Extract ALL details accurately.
+2. If end date ("to") is missing or says Present/Current, set "current": true and "to": "Present".
+3. Place responsibilities into "resp" separated by line breaks starting with "• ".
     `;
 
     // ─── API HELPERS ──────────────────────────────────────────
@@ -110,7 +111,7 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
           model: MODEL,
           max_tokens: 4000,
           system,
-          messages: [{ role: "user", content: `Parse this resume content into structured JSON:\n\n${text}` }]
+          messages: [{ role: "user", content: `Parse this resume text into JSON:\n\n${text}` }]
         })
       });
       const data = await res.json();
@@ -118,24 +119,16 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
       return data.content?.[0]?.text || "";
     }
 
-    // ─── ROBUST JSON REPAIR & SANITIZATION ───────────────────
-    function repairJsonString(rawStr) {
-      if (!rawStr) return "{}";
-      let str = rawStr.trim();
-      const startIdx = str.indexOf('{');
-      const endIdx = str.lastIndexOf('}');
-      if (startIdx !== -1 && endIdx !== -1) {
-        str = str.substring(startIdx, endIdx + 1);
+    // ─── JSON CLEANUP ─────────────────────────────────────────
+    function cleanAndParseJson(str) {
+      if (!str) return {};
+      let clean = str.replace(/```json/gi, "").replace(/```/g, "").trim();
+      const first = clean.indexOf("{");
+      const last = clean.lastIndexOf("}");
+      if (first !== -1 && last !== -1) {
+        clean = clean.substring(first, last + 1);
       }
-      str = str.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
-        return match
-          .replace(/\n/g, "\\n")
-          .replace(/\r/g, "\\r")
-          .replace(/\t/g, "\\t");
-      });
-      str = str.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
-      str = str.replace(/,\s*([}\]])/g, '$1');
-      return str;
+      return JSON.parse(clean);
     }
 
     function fileToBase64(file) {
@@ -164,7 +157,7 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
 
     async function pdfToBase64Image(file) {
       if (typeof pdfjsLib === "undefined") {
-        throw new Error("PDF processing library failed to load.");
+        throw new Error("PDF library not loaded.");
       }
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       const arrayBuffer = await fileToArrayBuffer(file);
@@ -202,7 +195,7 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
 
     async function extractPdfText(file) {
       if (typeof pdfjsLib === "undefined") {
-        throw new Error("PDF processing library failed to load.");
+        throw new Error("PDF library not loaded.");
       }
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
       const arrayBuffer = await fileToArrayBuffer(file);
@@ -217,36 +210,27 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
       return fullText.trim();
     }
 
-    // ─── ATS SCORE & RECOMMENDATION ENGINE ───────────────────
+    // ─── ATS SCORE CALCULATOR (SCORE ONLY) ──────────────────
     function evaluateATS(d) {
       let score = 0;
       let total = 0;
-      const suggestions = [];
 
-      const check = (condition, weight, passMsg, failMsg) => {
+      const check = (condition, weight) => {
         total += weight;
-        if (condition) {
-          score += weight;
-        } else {
-          suggestions.push({ msg: failMsg, weight });
-        }
+        if (condition) score += weight;
       };
 
-      check(d.personal?.firstName && d.personal?.lastName, 5, "Name provided", "Add your full first and last name.");
-      check(d.personal?.email, 5, "Email included", "Include a valid email address for recruiters."); 
-      check(d.personal?.phone, 5, "Phone number included", "Provide a contact phone number."); 
-      check(d.personal?.linkedin, 3, "LinkedIn linked", "Add your LinkedIn profile URL.");
-      check(d.summary?.length > 80, 15, "Strong summary", "Expand your professional summary (aim for 2-3 sentences / 80+ characters).");
-      check(d.experience?.some(e => e.company && e.title), 20, "Work history provided", "Add at least one work experience entry with title and company.");
-      check(d.experience?.some(e => e.resp && e.resp.length > 50), 10, "Detailed job responsibilities", "Add detailed bullet points for your job responsibilities.");
-      check(d.education?.some(e => e.college), 10, "Education history provided", "Include your college/university and degree details.");
-      check(d.skills?.technical?.length >= 3, 10, "Technical skills listed", "List at least 3-5 relevant technical or core domain skills.");
-      check(d.projects?.some(p => p.name), 7, "Key projects included", "Add 1-2 major projects showcasing your hands-on experience.");
-      check(d.achievements?.awards || d.achievements?.hackathons, 5, "Achievements recorded", "Mention notable achievements, awards, or key highlights.");
-      check(d.skills?.certifications?.length > 0, 5, "Certifications listed", "Include relevant professional certifications or courses.");
+      check(d.personal?.firstName && d.personal?.lastName, 10);
+      check(d.personal?.email, 10); 
+      check(d.personal?.phone, 10); 
+      check(d.personal?.linkedin, 5);
+      check(d.summary?.length > 40, 15);
+      check(d.experience?.some(e => e.company || e.title), 20);
+      check(d.experience?.some(e => e.resp && e.resp.length > 20), 10);
+      check(d.education?.some(e => e.college || e.degree), 10);
+      check(d.skills?.technical?.length > 0, 10);
 
-      const finalScore = Math.round((score / total) * 100) || 0;
-      return { score: finalScore, suggestions };
+      return Math.round((score / total) * 100) || 0;
     }
 
     function formatResponsibilities(respText) {
@@ -330,66 +314,58 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
       toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
     }
 
-    // ─── DOWNLOAD & ANALYTICS TRIGGER ─────────────────────────────
     function triggerDownload() {
       setState({ showTemplateModal: false });
-      
       if (window.va) {
-        window.va('event', { 
-          name: 'CV Downloaded', 
-          data: { template: state.selectedTemplate } 
-        });
+        window.va('event', { name: 'CV Downloaded', data: { template: state.selectedTemplate } });
       }
-
       setTimeout(() => { window.print(); }, 200);
     }
 
-    // ─── FILE UPLOAD PROCESSOR ──────────────────────────────────
+    // ─── UPLOAD PROCESSOR ──────────────────────────────────────
     async function handleFileUpload(file) {
       if (!file) return;
-      setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
+      setState({ uploadProgress: 20, uploadMessage: "Reading document..." });
 
       try {
-        let jsonStr = "";
+        let rawResponse = "";
         const fileType = file.name.split('.').pop().toLowerCase();
 
         if (fileType === "pdf") {
-          setState({ uploadProgress: 40, uploadMessage: "Rendering PDF pages..." });
+          setState({ uploadProgress: 40, uploadMessage: "Extracting text..." });
           try {
             const rawText = await extractPdfText(file);
-            if (rawText && rawText.length > 100) {
-              setState({ uploadProgress: 60, uploadMessage: "Analyzing text structure..." });
-              jsonStr = await callClaudeWithText(rawText, SYSTEM_PARSER_PROMPT);
+            if (rawText && rawText.length > 50) {
+              setState({ uploadProgress: 65, uploadMessage: "Analyzing structure..." });
+              rawResponse = await callClaudeWithText(rawText, SYSTEM_PARSER_PROMPT);
             } else {
-              throw new Error("Text layer empty, switching to OCR...");
+              throw new Error("Empty text layer");
             }
           } catch (e) {
-            setState({ uploadProgress: 50, uploadMessage: "Processing scanned image..." });
+            setState({ uploadProgress: 50, uploadMessage: "OCR scanning..." });
             const base64Img = await pdfToBase64Image(file);
-            setState({ uploadProgress: 75, uploadMessage: "AI visual extraction..." });
-            jsonStr = await callClaudeWithImage(base64Img, "image/jpeg", "Extract structured JSON from this resume image.", SYSTEM_PARSER_PROMPT);
+            setState({ uploadProgress: 75, uploadMessage: "Extracting with visual AI..." });
+            rawResponse = await callClaudeWithImage(base64Img, "image/jpeg", "Parse resume details into structured JSON.", SYSTEM_PARSER_PROMPT);
           }
         } else if (fileType === "docx") {
-          setState({ uploadProgress: 50, uploadMessage: "Extracting Word document..." });
+          setState({ uploadProgress: 50, uploadMessage: "Parsing Word document..." });
           const text = await extractDocxText(file);
-          setState({ uploadProgress: 75, uploadMessage: "Parsing data with AI..." });
-          jsonStr = await callClaudeWithText(text, SYSTEM_PARSER_PROMPT);
+          setState({ uploadProgress: 75, uploadMessage: "Analyzing structure..." });
+          rawResponse = await callClaudeWithText(text, SYSTEM_PARSER_PROMPT);
         } else if (["jpg", "jpeg", "png", "webp"].includes(fileType)) {
           setState({ uploadProgress: 50, uploadMessage: "Encoding image..." });
           const base64 = await fileToBase64(file);
           const mime = file.type || `image/${fileType}`;
-          setState({ uploadProgress: 75, uploadMessage: "Parsing visual data..." });
-          jsonStr = await callClaudeWithImage(base64, mime, "Extract JSON from resume image.", SYSTEM_PARSER_PROMPT);
+          setState({ uploadProgress: 75, uploadMessage: "Extracting visual text..." });
+          rawResponse = await callClaudeWithImage(base64, mime, "Parse resume details into JSON.", SYSTEM_PARSER_PROMPT);
         } else {
-          throw new Error("Unsupported file format.");
+          throw new Error("Unsupported format.");
         }
 
-        setState({ uploadProgress: 90, uploadMessage: "Structuring resume..." });
+        setState({ uploadProgress: 90, uploadMessage: "Finalizing data..." });
 
-        const cleanJsonStr = repairJsonString(jsonStr);
-        const parsed = JSON.parse(cleanJsonStr);
+        const parsed = cleanAndParseJson(rawResponse);
 
-        // Standardize present company flags
         if (Array.isArray(parsed.experience)) {
           parsed.experience = parsed.experience.map(exp => {
             if (!exp.to || exp.to.toLowerCase().includes('present') || exp.current) {
@@ -405,15 +381,15 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
           uploadProgress: null,
           uploadMessage: ""
         });
-        showToast("Resume parsed successfully!");
+        showToast("Resume uploaded successfully!");
 
       } catch (err) {
-        console.error("Upload error:", err);
-        setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` });
+        console.error("Upload Error:", err);
+        setState({ uploadProgress: null, uploadMessage: `❌ Unable to parse resume. Please enter details manually.` });
       }
     }
 
-    // ─── TEMPLATE RENDERERS ─────────────────────────────────────
+    // ─── CV RENDERER ──────────────────────────────────────────
     function renderCVContent() {
       const d = state.data;
       const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
@@ -422,7 +398,6 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
       const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
       const t = state.selectedTemplate;
 
-      // 1. ONE PAGER TEMPLATE
       if (t === 'one-pager') {
         return `
           <div class="space-y-4 text-xs leading-tight">
@@ -515,7 +490,6 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
         `;
       }
 
-      // 2. MODERN TEMPLATE
       if (t === 'modern') {
         return `
           <div class="grid grid-cols-3 gap-6 text-sm">
@@ -594,7 +568,6 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
         `;
       }
 
-      // 3. CLASSIC TEMPLATE
       if (t === 'classic') {
         return `
           <div class="space-y-4 font-serif text-sm">
@@ -650,7 +623,6 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
         `;
       }
 
-      // 4. MINIMAL TEMPLATE
       return `
         <div class="space-y-5 text-sm font-sans">
           <div>
@@ -690,7 +662,6 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
       
       backBtn.classList.toggle("hidden", state.page === "landing");
 
-      // Toast UI
       const toastEl = document.getElementById("toast");
       if (state.toast) {
         toastEl.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm flex items-center gap-2 ${
@@ -702,7 +673,6 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
         toastEl.classList.add("hidden");
       }
 
-      // Page Router
       if (state.page === "landing") {
         app.innerHTML = `
           <div class="text-center py-16 max-w-3xl mx-auto space-y-6">
@@ -760,43 +730,24 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
           </div>
         `;
       } else if (state.page === "builder") {
-        const ats = evaluateATS(state.data);
+        const score = evaluateATS(state.data);
         app.innerHTML = `
           <div class="grid grid-cols-12 gap-8">
-            <!-- Left Form Panel -->
+            <!-- Form Panel -->
             <div class="col-span-12 lg:col-span-7 space-y-6">
               
-              <!-- ATS Score Indicator & Recommendations -->
-              <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <!-- Clean ATS Score Display (Score Only) -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
                 <div class="flex items-center justify-between">
                   <div>
                     <h3 class="font-bold text-slate-800 text-base">ATS Optimization Score</h3>
-                    <p class="text-xs text-slate-500">Real-time check based on hiring systems criteria</p>
+                    <p class="text-xs text-slate-500">Real-time check based on hiring criteria</p>
                   </div>
-                  <div class="flex items-center gap-2">
-                    <span class="text-2xl font-black ${ats.score >= 80 ? 'text-emerald-600' : ats.score >= 50 ? 'text-amber-500' : 'text-red-500'}">${ats.score}%</span>
-                  </div>
+                  <span class="text-2xl font-black ${score >= 80 ? 'text-emerald-600' : score >= 50 ? 'text-amber-500' : 'text-red-500'}">${score}%</span>
                 </div>
-
                 <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                  <div class="h-full ${ats.score >= 80 ? 'bg-emerald-500' : ats.score >= 50 ? 'bg-amber-500' : 'bg-red-500'} transition-all duration-500" style="width: ${ats.score}%"></div>
+                  <div class="h-full ${score >= 80 ? 'bg-emerald-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-500'} transition-all duration-500" style="width: ${score}%"></div>
                 </div>
-
-                ${ats.suggestions.length > 0 ? `
-                  <div class="border-t border-slate-100 pt-3 space-y-2">
-                    <p class="text-xs font-bold text-slate-700 flex items-center gap-1">💡 How to increase your ATS Score:</p>
-                    <ul class="space-y-1.5 text-xs">
-                      ${ats.suggestions.map(s => `
-                        <li class="flex items-start gap-2 text-slate-600">
-                          <span class="text-amber-500 font-bold">•</span>
-                          <span>${s.msg}</span>
-                        </li>
-                      `).join('')}
-                    </ul>
-                  </div>
-                ` : `
-                  <p class="text-xs text-emerald-600 font-medium">✨ Great job! Your resume meets key ATS standards.</p>
-                `}
               </div>
 
               <!-- Personal Information -->
@@ -887,7 +838,7 @@ IMPORTANT INSTRUCTIONS FOR EXTRACTION:
 
             </div>
 
-            <!-- Right Preview Sidebar -->
+            <!-- Preview Sidebar -->
             <div class="col-span-12 lg:col-span-5 border border-slate-200 bg-white rounded-2xl p-6 shadow-sm h-fit sticky top-24">
               <div class="flex justify-between items-center mb-4">
                 <h3 class="font-bold text-slate-800">Preview</h3>
