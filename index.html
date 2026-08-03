@@ -61,6 +61,24 @@
     const API = "/api/claude";
     const MODEL = "gemini-2.5-flash";
 
+    const SYSTEM_PARSER_PROMPT = `
+Extract structured resume details into valid JSON matching this schema:
+{
+  "personal": { "firstName": "", "lastName": "", "email": "", "phone": "", "city": "", "state": "", "country": "", "linkedin": "", "github": "", "portfolio": "" },
+  "summary": "",
+  "education": [{ "id": 1, "college": "", "degree": "", "spec": "", "cgpa": "", "from": "", "to": "", "desc": "" }],
+  "experience": [{ "id": 1, "company": "", "title": "", "type": "Full-time", "location": "", "from": "", "to": "", "current": false, "resp": "" }],
+  "projects": [{ "id": 1, "name": "", "desc": "", "tech": "", "github": "", "live": "" }],
+  "skills": { "technical": [], "soft": [], "languages": [], "certifications": [] },
+  "achievements": { "awards": "", "hackathons": "", "publications": "", "patents": "" }
+}
+
+IMPORTANT INSTRUCTIONS FOR EXTRACTION:
+1. WORK EXPERIENCE DATES: If an end date ("to") is missing, active, or indicated as "Present", "Current", "Till Date", or ongoing, set "current": true and "to": "Present".
+2. RESPONSIBILITIES: Convert all job descriptions and experience details into clear, bulleted statements separated by newlines. Start each line with "• ". Do not lump paragraphs together.
+3. SKILLS: Extract technical skills, soft skills, and certifications into arrays.
+    `;
+
     // ─── API HELPERS ──────────────────────────────────────────
     async function callClaudeWithImage(base64, mimeType, prompt, system) {
       const res = await fetch(API, {
@@ -199,22 +217,43 @@
       return fullText.trim();
     }
 
-    function atsScore(d) {
-      let s = 0, t = 0;
-      const a = (v, p) => { t += p; if (v) s += p; };
-      a(d.personal?.firstName && d.personal?.lastName, 5);
-      a(d.personal?.email, 5); 
-      a(d.personal?.phone, 5); 
-      a(d.personal?.linkedin, 3);
-      a(d.summary?.length > 80, 15);
-      a(d.experience?.some(e => e.company), 20);
-      a(d.experience?.some(e => e.resp?.length > 40), 10);
-      a(d.education?.some(e => e.college), 10);
-      a(d.skills?.technical?.length > 0, 10);
-      a(d.projects?.some(p => p.name), 7);
-      a(d.achievements?.awards || d.achievements?.hackathons, 5);
-      a(d.skills?.certifications?.length > 0, 5);
-      return Math.round((s / t) * 100) || 0;
+    // ─── ATS SCORE & RECOMMENDATION ENGINE ───────────────────
+    function evaluateATS(d) {
+      let score = 0;
+      let total = 0;
+      const suggestions = [];
+
+      const check = (condition, weight, passMsg, failMsg) => {
+        total += weight;
+        if (condition) {
+          score += weight;
+        } else {
+          suggestions.push({ msg: failMsg, weight });
+        }
+      };
+
+      check(d.personal?.firstName && d.personal?.lastName, 5, "Name provided", "Add your full first and last name.");
+      check(d.personal?.email, 5, "Email included", "Include a valid email address for recruiters."); 
+      check(d.personal?.phone, 5, "Phone number included", "Provide a contact phone number."); 
+      check(d.personal?.linkedin, 3, "LinkedIn linked", "Add your LinkedIn profile URL.");
+      check(d.summary?.length > 80, 15, "Strong summary", "Expand your professional summary (aim for 2-3 sentences / 80+ characters).");
+      check(d.experience?.some(e => e.company && e.title), 20, "Work history provided", "Add at least one work experience entry with title and company.");
+      check(d.experience?.some(e => e.resp && e.resp.length > 50), 10, "Detailed job responsibilities", "Add detailed bullet points for your job responsibilities.");
+      check(d.education?.some(e => e.college), 10, "Education history provided", "Include your college/university and degree details.");
+      check(d.skills?.technical?.length >= 3, 10, "Technical skills listed", "List at least 3-5 relevant technical or core domain skills.");
+      check(d.projects?.some(p => p.name), 7, "Key projects included", "Add 1-2 major projects showcasing your hands-on experience.");
+      check(d.achievements?.awards || d.achievements?.hackathons, 5, "Achievements recorded", "Mention notable achievements, awards, or key highlights.");
+      check(d.skills?.certifications?.length > 0, 5, "Certifications listed", "Include relevant professional certifications or courses.");
+
+      const finalScore = Math.round((score / total) * 100) || 0;
+      return { score: finalScore, suggestions };
+    }
+
+    function formatResponsibilities(respText) {
+      if (!respText) return '';
+      const lines = respText.split('\n').map(l => l.replace(/^[•\-\*]\s*/, '').trim()).filter(Boolean);
+      if (lines.length === 0) return '';
+      return `<ul class="list-disc list-inside space-y-1 mt-1 text-slate-600">${lines.map(l => `<li>${l}</li>`).join('')}</ul>`;
     }
 
     function blankData() {
@@ -295,7 +334,6 @@
     function triggerDownload() {
       setState({ showTemplateModal: false });
       
-      // Track Download Event in Vercel Analytics
       if (window.va) {
         window.va('event', { 
           name: 'CV Downloaded', 
@@ -311,8 +349,6 @@
       if (!file) return;
       setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
 
-      const systemPrompt = "Extract structured resume details into valid JSON matching the exact schema requested.";
-
       try {
         let jsonStr = "";
         const fileType = file.name.split('.').pop().toLowerCase();
@@ -323,7 +359,7 @@
             const rawText = await extractPdfText(file);
             if (rawText && rawText.length > 100) {
               setState({ uploadProgress: 60, uploadMessage: "Analyzing text structure..." });
-              jsonStr = await callClaudeWithText(rawText, systemPrompt);
+              jsonStr = await callClaudeWithText(rawText, SYSTEM_PARSER_PROMPT);
             } else {
               throw new Error("Text layer empty, switching to OCR...");
             }
@@ -331,19 +367,19 @@
             setState({ uploadProgress: 50, uploadMessage: "Processing scanned image..." });
             const base64Img = await pdfToBase64Image(file);
             setState({ uploadProgress: 75, uploadMessage: "AI visual extraction..." });
-            jsonStr = await callClaudeWithImage(base64Img, "image/jpeg", "Extract structured JSON from this resume image.", systemPrompt);
+            jsonStr = await callClaudeWithImage(base64Img, "image/jpeg", "Extract structured JSON from this resume image.", SYSTEM_PARSER_PROMPT);
           }
         } else if (fileType === "docx") {
           setState({ uploadProgress: 50, uploadMessage: "Extracting Word document..." });
           const text = await extractDocxText(file);
           setState({ uploadProgress: 75, uploadMessage: "Parsing data with AI..." });
-          jsonStr = await callClaudeWithText(text, systemPrompt);
+          jsonStr = await callClaudeWithText(text, SYSTEM_PARSER_PROMPT);
         } else if (["jpg", "jpeg", "png", "webp"].includes(fileType)) {
           setState({ uploadProgress: 50, uploadMessage: "Encoding image..." });
           const base64 = await fileToBase64(file);
           const mime = file.type || `image/${fileType}`;
           setState({ uploadProgress: 75, uploadMessage: "Parsing visual data..." });
-          jsonStr = await callClaudeWithImage(base64, mime, "Extract JSON from resume image.", systemPrompt);
+          jsonStr = await callClaudeWithImage(base64, mime, "Extract JSON from resume image.", SYSTEM_PARSER_PROMPT);
         } else {
           throw new Error("Unsupported file format.");
         }
@@ -352,6 +388,16 @@
 
         const cleanJsonStr = repairJsonString(jsonStr);
         const parsed = JSON.parse(cleanJsonStr);
+
+        // Standardize present company flags
+        if (Array.isArray(parsed.experience)) {
+          parsed.experience = parsed.experience.map(exp => {
+            if (!exp.to || exp.to.toLowerCase().includes('present') || exp.current) {
+              return { ...exp, current: true, to: "Present" };
+            }
+            return exp;
+          });
+        }
 
         setState({
           data: { ...blankData(), ...parsed },
@@ -380,7 +426,6 @@
       if (t === 'one-pager') {
         return `
           <div class="space-y-4 text-xs leading-tight">
-            <!-- Compact Header -->
             <div class="border-b border-slate-300 pb-2">
               <h1 class="text-2xl font-black text-slate-900 tracking-tight uppercase">${fullName}</h1>
               <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600 font-medium mt-1">
@@ -391,16 +436,9 @@
               </div>
             </div>
 
-            <!-- Summary -->
-            ${d.summary ? `
-              <div>
-                <p class="text-slate-700 leading-snug">${d.summary}</p>
-              </div>
-            ` : ''}
+            ${d.summary ? `<div><p class="text-slate-700 leading-snug">${d.summary}</p></div>` : ''}
 
-            <!-- Dense Two Column Layout -->
             <div class="grid grid-cols-12 gap-4">
-              <!-- Left Column: Experience & Projects (7 cols) -->
               <div class="col-span-7 space-y-3">
                 ${d.experience?.length ? `
                   <div>
@@ -410,9 +448,9 @@
                         <div>
                           <div class="flex justify-between items-baseline font-bold text-slate-800">
                             <span>${e.title || 'Role'} ${e.company ? `| ${e.company}` : ''}</span>
-                            <span class="text-[10px] text-slate-500 font-normal">${e.from || ''} - ${e.to || ''}</span>
+                            <span class="text-[10px] text-slate-500 font-normal">${e.from || ''} - ${e.current ? 'Present' : (e.to || '')}</span>
                           </div>
-                          <p class="text-slate-600 mt-0.5 text-[11px] leading-snug">${e.resp || ''}</p>
+                          ${formatResponsibilities(e.resp)}
                         </div>
                       `).join('')}
                     </div>
@@ -437,7 +475,6 @@
                 ` : ''}
               </div>
 
-              <!-- Right Column: Education & Skills (5 cols) -->
               <div class="col-span-5 space-y-3 border-l border-slate-100 pl-3">
                 ${d.education?.length ? `
                   <div>
@@ -458,18 +495,8 @@
                   <div>
                     <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Skills</h2>
                     <div class="space-y-1.5">
-                      ${techSkills.length ? `
-                        <div>
-                          <span class="font-semibold text-slate-700 text-[11px]">Technical:</span>
-                          <p class="text-slate-600 text-[11px] leading-tight">${techSkills.join(", ")}</p>
-                        </div>
-                      ` : ''}
-                      ${softSkills.length ? `
-                        <div>
-                          <span class="font-semibold text-slate-700 text-[11px]">Soft Skills:</span>
-                          <p class="text-slate-600 text-[11px] leading-tight">${softSkills.join(", ")}</p>
-                        </div>
-                      ` : ''}
+                      ${techSkills.length ? `<div><span class="font-semibold text-slate-700 text-[11px]">Technical:</span><p class="text-slate-600 text-[11px] leading-tight">${techSkills.join(", ")}</p></div>` : ''}
+                      ${softSkills.length ? `<div><span class="font-semibold text-slate-700 text-[11px]">Soft Skills:</span><p class="text-slate-600 text-[11px] leading-tight">${softSkills.join(", ")}</p></div>` : ''}
                     </div>
                   </div>
                 ` : ''}
@@ -541,8 +568,8 @@
                     ${d.experience.map(e => `
                       <div class="border-l-2 border-blue-500 pl-3">
                         <p class="font-bold text-sm text-slate-800">${e.title || 'Role'} <span class="text-xs font-normal text-slate-500">at ${e.company || ''}</span></p>
-                        <p class="text-[10px] text-slate-400 mb-1">${e.from || ''} - ${e.to || ''}</p>
-                        <p class="text-xs text-slate-600">${e.resp || ''}</p>
+                        <p class="text-[10px] text-slate-400 mb-1">${e.from || ''} - ${e.current ? 'Present' : (e.to || '')}</p>
+                        ${formatResponsibilities(e.resp)}
                       </div>
                     `).join('')}
                   </div>
@@ -595,9 +622,9 @@
                     <div>
                       <div class="flex justify-between font-bold text-xs text-slate-800">
                         <span>${e.title || 'Role'} — ${e.company || ''}</span>
-                        <span>${e.from || ''} – ${e.to || ''}</span>
+                        <span>${e.from || ''} – ${e.current ? 'Present' : (e.to || '')}</span>
                       </div>
-                      <p class="text-xs text-slate-600 mt-1">${e.resp || ''}</p>
+                      ${formatResponsibilities(e.resp)}
                     </div>
                   `).join('')}
                 </div>
@@ -644,10 +671,10 @@
                 <div class="space-y-1">
                   <div class="flex justify-between text-xs">
                     <span class="font-medium text-slate-800">${e.title || ''}</span>
-                    <span class="text-slate-400">${e.from || ''} — ${e.to || ''}</span>
+                    <span class="text-slate-400">${e.from || ''} — ${e.current ? 'Present' : (e.to || '')}</span>
                   </div>
                   <p class="text-xs text-slate-500">${e.company || ''}</p>
-                  <p class="text-xs text-slate-600 pt-1">${e.resp || ''}</p>
+                  ${formatResponsibilities(e.resp)}
                 </div>
               `).join('')}
             </div>
@@ -716,7 +743,16 @@
               </div>
             </div>
 
-            ${state.uploadMessage ? `
+            ${state.uploadProgress ? `
+              <div class="space-y-2">
+                <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                  <div class="bg-blue-600 h-full transition-all duration-300" style="width: ${state.uploadProgress}%"></div>
+                </div>
+                <p class="text-center text-xs font-medium text-slate-500">${state.uploadMessage}</p>
+              </div>
+            ` : ''}
+
+            ${state.uploadMessage && !state.uploadProgress ? `
               <p class="text-center text-sm font-medium ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-blue-600'}">
                 ${state.uploadMessage}
               </p>
@@ -724,273 +760,174 @@
           </div>
         `;
       } else if (state.page === "builder") {
-        const d = state.data;
-        const expList = d.experience || [];
-        const eduList = d.education || [];
-        const projList = d.projects || [];
-        const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical.join(", ") : (d.skills?.technical || "");
-        const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft.join(", ") : (d.skills?.soft || "");
-        const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications.join(", ") : (d.skills?.certifications || "");
-
+        const ats = evaluateATS(state.data);
         app.innerHTML = `
-          <div class="max-w-4xl mx-auto w-full space-y-8">
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
-              <div>
-                <h2 class="text-2xl font-bold text-slate-900">Resume Builder</h2>
-                <p class="text-xs text-slate-500">Review and edit your parsed resume details.</p>
-              </div>
-              <div class="bg-emerald-50 text-emerald-700 font-semibold text-sm px-4 py-2 rounded-xl border border-emerald-200">
-                ATS Score: ${atsScore(d)}%
-              </div>
-            </div>
+          <div class="grid grid-cols-12 gap-8">
+            <!-- Left Form Panel -->
+            <div class="col-span-12 lg:col-span-7 space-y-6">
+              
+              <!-- ATS Score Indicator & Recommendations -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <h3 class="font-bold text-slate-800 text-base">ATS Optimization Score</h3>
+                    <p class="text-xs text-slate-500">Real-time check based on hiring systems criteria</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-2xl font-black ${ats.score >= 80 ? 'text-emerald-600' : ats.score >= 50 ? 'text-amber-500' : 'text-red-500'}">${ats.score}%</span>
+                  </div>
+                </div>
 
-            <!-- Personal Info -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <h3 class="text-lg font-bold text-slate-800 border-b pb-2">👤 Personal Details</h3>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">First Name</label>
-                  <input type="text" value="${d.personal?.firstName || ''}" onchange="updData('personal.firstName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div class="h-full ${ats.score >= 80 ? 'bg-emerald-500' : ats.score >= 50 ? 'bg-amber-500' : 'bg-red-500'} transition-all duration-500" style="width: ${ats.score}%"></div>
                 </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Last Name</label>
-                  <input type="text" value="${d.personal?.lastName || ''}" onchange="updData('personal.lastName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
-                  <input type="email" value="${d.personal?.email || ''}" onchange="updData('personal.email', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Phone</label>
-                  <input type="text" value="${d.personal?.phone || ''}" onchange="updData('personal.phone', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">LinkedIn</label>
-                  <input type="text" value="${d.personal?.linkedin || ''}" onchange="updData('personal.linkedin', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">GitHub / Portfolio</label>
-                  <input type="text" value="${d.personal?.github || d.personal?.portfolio || ''}" onchange="updData('personal.github', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+
+                ${ats.suggestions.length > 0 ? `
+                  <div class="border-t border-slate-100 pt-3 space-y-2">
+                    <p class="text-xs font-bold text-slate-700 flex items-center gap-1">💡 How to increase your ATS Score:</p>
+                    <ul class="space-y-1.5 text-xs">
+                      ${ats.suggestions.map(s => `
+                        <li class="flex items-start gap-2 text-slate-600">
+                          <span class="text-amber-500 font-bold">•</span>
+                          <span>${s.msg}</span>
+                        </li>
+                      `).join('')}
+                    </ul>
+                  </div>
+                ` : `
+                  <p class="text-xs text-emerald-600 font-medium">✨ Great job! Your resume meets key ATS standards.</p>
+                `}
+              </div>
+
+              <!-- Personal Information -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <h3 class="font-bold text-slate-800 text-lg">Personal Details</h3>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">First Name</label>
+                    <input type="text" value="${state.data.personal?.firstName || ''}" onchange="updData('personal.firstName', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Last Name</label>
+                    <input type="text" value="${state.data.personal?.lastName || ''}" onchange="updData('personal.lastName', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                    <input type="email" value="${state.data.personal?.email || ''}" onchange="updData('personal.email', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Phone</label>
+                    <input type="text" value="${state.data.personal?.phone || ''}" onchange="updData('personal.phone', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
+                  </div>
+                  <div class="col-span-2">
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">LinkedIn Profile</label>
+                    <input type="text" value="${state.data.personal?.linkedin || ''}" onchange="updData('personal.linkedin', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Professional Summary -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <h3 class="text-lg font-bold text-slate-800 border-b pb-2">📝 Professional Summary</h3>
-              <textarea rows="4" onchange="updData('summary', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500">${d.summary || ''}</textarea>
-            </div>
-
-            <!-- Experience -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div class="flex items-center justify-between border-b pb-2">
-                <h3 class="text-lg font-bold text-slate-800">💼 Work Experience</h3>
-                <button onclick="addItem('experience', { company: '', title: '', from: '', to: '', resp: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Position</button>
+              <!-- Executive Summary -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <h3 class="font-bold text-slate-800 text-lg">Professional Summary</h3>
+                <textarea rows="3" onchange="updData('summary', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500">${state.data.summary || ''}</textarea>
               </div>
-              <div class="space-y-6">
-                ${expList.map((exp, idx) => `
-                  <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('experience', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+              <!-- Work Experience -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <div class="flex justify-between items-center">
+                  <h3 class="font-bold text-slate-800 text-lg">💼 Work Experience</h3>
+                  <button onclick="addItem('experience', { company: '', title: '', from: '', to: '', current: false, resp: '' })" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1.5 rounded-lg border border-blue-200 transition-all">+ Add Position</button>
+                </div>
+                
+                ${(state.data.experience || []).map((exp, idx) => `
+                  <div class="border border-slate-100 bg-slate-50/50 p-4 rounded-xl space-y-3 relative">
+                    <button onclick="removeItem('experience', ${idx})" class="absolute top-3 right-3 text-xs text-red-500 hover:underline">Remove</button>
+                    
+                    <div class="grid grid-cols-2 gap-3">
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">Company</label>
-                        <input type="text" value="${exp.company || ''}" onchange="updateArrayItem('experience', ${idx}, 'company', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Company</label>
+                        <input type="text" value="${exp.company || ''}" onchange="updateArrayItem('experience', ${idx}, 'company', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">Job Title</label>
-                        <input type="text" value="${exp.title || ''}" onchange="updateArrayItem('experience', ${idx}, 'title', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Job Title</label>
+                        <input type="text" value="${exp.title || ''}" onchange="updateArrayItem('experience', ${idx}, 'title', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">From</label>
-                        <input type="text" value="${exp.from || ''}" onchange="updateArrayItem('experience', ${idx}, 'from', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">From</label>
+                        <input type="text" value="${exp.from || ''}" onchange="updateArrayItem('experience', ${idx}, 'from', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white" placeholder="e.g. September 2017"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">To</label>
-                        <input type="text" value="${exp.to || ''}" onchange="updateArrayItem('experience', ${idx}, 'to', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <div class="flex justify-between items-center mb-1">
+                          <label class="text-xs font-semibold text-slate-600">To</label>
+                          <label class="flex items-center gap-1 text-[11px] text-blue-600 font-medium cursor-pointer">
+                            <input type="checkbox" ${exp.current ? 'checked' : ''} onchange="updateArrayItem('experience', ${idx}, 'current', this.checked); if(this.checked){ updateArrayItem('experience', ${idx}, 'to', 'Present'); }" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>
+                            Currently Work Here
+                          </label>
+                        </div>
+                        <input type="text" value="${exp.current ? 'Present' : (exp.to || '')}" ${exp.current ? 'disabled' : ''} onchange="updateArrayItem('experience', ${idx}, 'to', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white disabled:bg-slate-100 disabled:text-slate-500" placeholder="e.g. Present"/>
                       </div>
                     </div>
+
                     <div>
-                      <label class="block text-xs font-medium text-slate-500">Responsibilities</label>
-                      <textarea rows="3" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${exp.resp || ''}</textarea>
+                      <label class="block text-xs font-semibold text-slate-600 mb-1">Responsibilities (Use separate lines for bullet points)</label>
+                      <textarea rows="4" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white font-mono leading-relaxed" placeholder="• Led cross-functional teams...\n• Increased overall conversion rates by 25%...">${exp.resp || ''}</textarea>
                     </div>
                   </div>
                 `).join('')}
               </div>
-            </div>
 
-            <!-- Education -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div class="flex items-center justify-between border-b pb-2">
-                <h3 class="text-lg font-bold text-slate-800">🎓 Education</h3>
-                <button onclick="addItem('education', { college: '', degree: '', spec: '', from: '', to: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Education</button>
-              </div>
-              <div class="space-y-6">
-                ${eduList.map((edu, idx) => `
-                  <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('education', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Institution / College</label>
-                        <input type="text" value="${edu.college || ''}" onchange="updateArrayItem('education', ${idx}, 'college', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Degree & Major</label>
-                        <input type="text" value="${edu.degree || ''} ${edu.spec || ''}" onchange="updateArrayItem('education', ${idx}, 'degree', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">From</label>
-                        <input type="text" value="${edu.from || ''}" onchange="updateArrayItem('education', ${idx}, 'from', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">To</label>
-                        <input type="text" value="${edu.to || ''}" onchange="updateArrayItem('education', ${idx}, 'to', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-
-            <!-- Key Projects -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div class="flex items-center justify-between border-b pb-2">
-                <h3 class="text-lg font-bold text-slate-800">🚀 Key Projects</h3>
-                <button onclick="addItem('projects', { name: '', desc: '', tech: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Project</button>
-              </div>
-              <div class="space-y-6">
-                ${projList.map((proj, idx) => `
-                  <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('projects', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Project Name</label>
-                        <input type="text" value="${proj.name || ''}" onchange="updateArrayItem('projects', ${idx}, 'name', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Technologies Used</label>
-                        <input type="text" value="${proj.tech || ''}" onchange="updateArrayItem('projects', ${idx}, 'tech', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                    </div>
-                    <div>
-                      <label class="block text-xs font-medium text-slate-500">Description</label>
-                      <textarea rows="2" onchange="updateArrayItem('projects', ${idx}, 'desc', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${proj.desc || ''}</textarea>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-
-            <!-- Skills & Certifications -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <h3 class="text-lg font-bold text-slate-800 border-b pb-2">⚡ Skills & Certifications</h3>
-              <div class="grid grid-cols-1 gap-4">
+              <!-- Skills -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+                <h3 class="font-bold text-slate-800 text-lg">Skills & Certifications</h3>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Technical Skills (comma-separated)</label>
-                  <input type="text" value="${techSkills}" onchange="updData('skills.technical', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Soft Skills (comma-separated)</label>
-                  <input type="text" value="${softSkills}" onchange="updData('skills.soft', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Certifications (comma-separated)</label>
-                  <input type="text" value="${certs}" onchange="updData('skills.certifications', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Technical Skills (Comma separated)</label>
+                  <input type="text" value="${(state.data.skills?.technical || []).join(', ')}" onchange="updData('skills.technical', this.value.split(',').map(s => s.trim()).filter(Boolean))" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
                 </div>
               </div>
+
             </div>
 
-            <!-- Submit Action Bar -->
-            <div class="flex justify-end pt-4">
-              <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-base px-8 py-4 rounded-xl shadow-lg transition-all flex items-center gap-2">
-                ⚡ Generate & Preview CV →
-              </button>
-            </div>
+            <!-- Right Preview Sidebar -->
+            <div class="col-span-12 lg:col-span-5 border border-slate-200 bg-white rounded-2xl p-6 shadow-sm h-fit sticky top-24">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-slate-800">Preview</h3>
+                <button onclick="setState({ page: 'preview' })" class="text-xs bg-blue-600 text-white font-semibold px-3 py-1.5 rounded-lg">Full Screen Preview</button>
+              </div>
 
+              <div class="border border-slate-100 rounded-xl p-4 bg-white shadow-inner max-h-[600px] overflow-y-auto">
+                ${renderCVContent()}
+              </div>
+            </div>
           </div>
         `;
       } else if (state.page === "preview") {
         app.innerHTML = `
-          <div class="max-w-4xl mx-auto w-full space-y-6">
-            <!-- Top Controls -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 no-print">
-              <button onclick="setState({ page: 'builder' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl">
-                ← Edit Data
-              </button>
-              
-              <!-- Quick Switcher -->
-              <div class="flex items-center gap-2 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
-                <button onclick="setState({ selectedTemplate: 'one-pager' })" class="px-3 py-1.5 rounded-lg transition-all ${state.selectedTemplate === 'one-pager' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600'}">⚡ One Pager</button>
-                <button onclick="setState({ selectedTemplate: 'modern' })" class="px-3 py-1.5 rounded-lg transition-all ${state.selectedTemplate === 'modern' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600'}">Modern</button>
-                <button onclick="setState({ selectedTemplate: 'classic' })" class="px-3 py-1.5 rounded-lg transition-all ${state.selectedTemplate === 'classic' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600'}">Classic</button>
-                <button onclick="setState({ selectedTemplate: 'minimal' })" class="px-3 py-1.5 rounded-lg transition-all ${state.selectedTemplate === 'minimal' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-600'}">Minimal</button>
+          <div class="max-w-4xl mx-auto space-y-6">
+            <div class="flex justify-between items-center no-print">
+              <div class="flex items-center gap-3">
+                <label class="text-xs font-semibold text-slate-600">Template:</label>
+                <select onchange="setState({ selectedTemplate: this.value })" class="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white">
+                  <option value="one-pager" ${state.selectedTemplate === 'one-pager' ? 'selected' : ''}>One Pager (Compact)</option>
+                  <option value="modern" ${state.selectedTemplate === 'modern' ? 'selected' : ''}>Modern Two-Column</option>
+                  <option value="classic" ${state.selectedTemplate === 'classic' ? 'selected' : ''}>Executive Classic</option>
+                  <option value="minimal" ${state.selectedTemplate === 'minimal' ? 'selected' : ''}>Minimalist</option>
+                </select>
               </div>
 
-              <button onclick="setState({ showTemplateModal: true })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
-                📥 Download CV
+              <button onclick="triggerDownload()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-2 rounded-xl transition-all shadow-sm">
+                🖨️ Download / Print PDF
               </button>
             </div>
 
-            <!-- CV Preview Card -->
-            <div id="cv-preview-card" class="bg-white border border-slate-200 rounded-2xl p-8 shadow-xl">
+            <div id="cv-preview-card" class="bg-white border border-slate-200 p-8 rounded-2xl shadow-md min-h-[900px]">
               ${renderCVContent()}
             </div>
           </div>
-
-          <!-- Template Selection Modal -->
-          ${state.showTemplateModal ? `
-            <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 no-print">
-              <div class="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-slate-100">
-                <div class="flex justify-between items-center border-b pb-3">
-                  <div>
-                    <h3 class="text-xl font-bold text-slate-900">Select Resume Template</h3>
-                    <p class="text-xs text-slate-500">Choose a layout before downloading your document.</p>
-                  </div>
-                  <button onclick="setState({ showTemplateModal: false })" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4">
-                  <!-- One Pager -->
-                  <div onclick="setState({ selectedTemplate: 'one-pager' })" class="border-2 rounded-xl p-4 cursor-pointer transition-all ${state.selectedTemplate === 'one-pager' ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}">
-                    <div class="flex items-center justify-between">
-                      <p class="font-bold text-sm text-slate-800">⚡ One Pager</p>
-                      <span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">Recommended</span>
-                    </div>
-                    <p class="text-xs text-slate-500 mt-1">Dense two-column setup engineered to pack maximum content onto 1 printed page.</p>
-                  </div>
-
-                  <!-- Modern -->
-                  <div onclick="setState({ selectedTemplate: 'modern' })" class="border-2 rounded-xl p-4 cursor-pointer transition-all ${state.selectedTemplate === 'modern' ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}">
-                    <p class="font-bold text-sm text-slate-800">🎨 Modern</p>
-                    <p class="text-xs text-slate-500 mt-1">Sleek sidebar layout with subtle accents. Great for tech and creative roles.</p>
-                  </div>
-
-                  <!-- Classic -->
-                  <div onclick="setState({ selectedTemplate: 'classic' })" class="border-2 rounded-xl p-4 cursor-pointer transition-all ${state.selectedTemplate === 'classic' ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}">
-                    <p class="font-bold text-sm text-slate-800">🏛️ Classic</p>
-                    <p class="text-xs text-slate-500 mt-1">Traditional serif design. Perfect for corporate, finance, or legal positions.</p>
-                  </div>
-
-                  <!-- Minimal -->
-                  <div onclick="setState({ selectedTemplate: 'minimal' })" class="border-2 rounded-xl p-4 cursor-pointer transition-all ${state.selectedTemplate === 'minimal' ? 'border-blue-600 bg-blue-50/40 ring-2 ring-blue-100' : 'border-slate-200 hover:border-slate-300'}">
-                    <p class="font-bold text-sm text-slate-800">📄 Minimal</p>
-                    <p class="text-xs text-slate-500 mt-1">Clean, spacious typography with maximum readability and ATS support.</p>
-                  </div>
-                </div>
-
-                <div class="flex justify-end gap-3 border-t pt-4">
-                  <button onclick="setState({ showTemplateModal: false })" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-xl">Cancel</button>
-                  <button onclick="triggerDownload()" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl shadow-md">
-                    Print / Save PDF
-                  </button>
-                </div>
-              </div>
-            </div>
-          ` : ''}
         `;
       }
     }
 
-    // Initial Load
+    // Initialize App
     render();
   </script>
 </body>
