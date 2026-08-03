@@ -1,885 +1,1452 @@
 <!DOCTYPE html>
+
 <html lang="en">
+
 <head>
+
   <meta charset="UTF-8" />
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
   <title>Resunex — Create Your CV Free</title>
+
   
+
   <!-- Tailwind CSS CDN -->
+
   <script src="https://cdn.tailwindcss.com"></script>
+
   
+
   <!-- PDF.js CDN -->
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
   
+
   <!-- Mammoth.js CDN -->
+
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 
+
+
   <!-- Vercel Web Analytics -->
+
   <script defer src="/_vercel/insights/script.js"></script>
 
+
+
   <style>
+
     @media print {
+
       body * { visibility: hidden; }
+
       #cv-preview-card, #cv-preview-card * { visibility: visible; }
+
       #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; shadow: none; border: none; }
+
       header, .no-print { display: none !important; }
+
       @page { margin: 10mm; size: auto; }
+
     }
+
   </style>
+
 </head>
+
 <body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
 
+
+
   <!-- Header -->
+
   <header class="bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
+
     <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+
       <div class="flex items-center gap-4">
+
         <button id="backBtn" onclick="handleBack()" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">
+
           ← Back
+
         </button>
+
         <span class="text-xl font-black tracking-tight text-blue-600">Resunex</span>
+
       </div>
+
       <div class="flex items-center gap-3">
+
         <button onclick="setState({ page: 'upload' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5">Upload CV</button>
+
         <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-xl shadow-sm transition-all">
+
           ⚡ Create CV
+
         </button>
+
       </div>
+
     </div>
+
   </header>
 
+
+
   <!-- Main Container -->
+
   <main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
+
     <!-- Dynamic Content Rendered Here -->
+
   </main>
 
+
+
   <!-- Toast Notification Container -->
+
   <div id="toast" class="fixed bottom-6 right-6 hidden z-50 no-print"></div>
 
+
+
   <!-- JavaScript Logic -->
+
   <script>
+
     // ─── CONFIG ───────────────────────────────────────────────
+
     const API = "/api/claude";
+
     const MODEL = "gemini-2.5-flash";
 
-    const SYSTEM_PARSER_PROMPT = `
-You are a precise resume parser. Return ONLY a valid JSON object without markdown fences, comments, or intro/outro text.
-JSON Structure:
-{
-  "personal": { "firstName": "", "lastName": "", "email": "", "phone": "", "city": "", "state": "", "country": "", "linkedin": "", "github": "", "portfolio": "" },
-  "summary": "",
-  "education": [{ "id": 1, "college": "", "degree": "", "spec": "", "cgpa": "", "from": "", "to": "", "desc": "" }],
-  "experience": [{ "id": 1, "company": "", "title": "", "type": "Full-time", "location": "", "from": "", "to": "", "current": false, "resp": "" }],
-  "projects": [{ "id": 1, "name": "", "desc": "", "tech": "", "github": "", "live": "" }],
-  "skills": { "technical": [], "soft": [], "languages": [], "certifications": [] },
-  "achievements": { "awards": "", "hackathons": "", "publications": "", "patents": "" }
-}
 
-RULES:
-1. Extract ALL details accurately.
-2. If end date ("to") is missing or says Present/Current, set "current": true and "to": "Present".
-3. Place responsibilities into "resp" separated by line breaks starting with "• ".
-    `;
 
     // ─── API HELPERS ──────────────────────────────────────────
+
     async function callClaudeWithImage(base64, mimeType, prompt, system) {
+
       const res = await fetch(API, {
+
         method: "POST",
+
         headers: { "Content-Type": "application/json" },
+
         body: JSON.stringify({
+
           model: MODEL,
+
           max_tokens: 4000,
+
           system,
+
           messages: [{
+
             role: "user",
+
             content: [
+
               { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
+
               { type: "text", text: prompt }
+
             ]
+
           }]
+
         })
+
       });
+
       const data = await res.json();
+
       if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+
       return data.content?.[0]?.text || "";
+
     }
+
+
 
     async function callClaudeWithText(text, system) {
+
       const res = await fetch(API, {
+
         method: "POST",
+
         headers: { "Content-Type": "application/json" },
+
         body: JSON.stringify({
+
           model: MODEL,
+
           max_tokens: 4000,
+
           system,
-          messages: [{ role: "user", content: `Parse this resume text into JSON:\n\n${text}` }]
+
+          messages: [{ role: "user", content: `Parse this resume content into structured JSON:\n\n${text}` }]
+
         })
+
       });
+
       const data = await res.json();
+
       if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+
       return data.content?.[0]?.text || "";
+
     }
 
-    // ─── JSON CLEANUP ─────────────────────────────────────────
-    function cleanAndParseJson(str) {
-      if (!str) return {};
-      let clean = str.replace(/```json/gi, "").replace(/```/g, "").trim();
-      const first = clean.indexOf("{");
-      const last = clean.lastIndexOf("}");
-      if (first !== -1 && last !== -1) {
-        clean = clean.substring(first, last + 1);
+
+
+    // ─── ROBUST JSON REPAIR & SANITIZATION ───────────────────
+
+    function repairJsonString(rawStr) {
+
+      if (!rawStr) return "{}";
+
+      let str = rawStr.trim();
+
+      const startIdx = str.indexOf('{');
+
+      const endIdx = str.lastIndexOf('}');
+
+      if (startIdx !== -1 && endIdx !== -1) {
+
+        str = str.substring(startIdx, endIdx + 1);
+
       }
-      return JSON.parse(clean);
+
+      str = str.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
+
+        return match
+
+          .replace(/\n/g, "\\n")
+
+          .replace(/\r/g, "\\r")
+
+          .replace(/\t/g, "\\t");
+
+      });
+
+      str = str.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+
+      str = str.replace(/,\s*([}\]])/g, '$1');
+
+      return str;
+
     }
+
+
 
     function fileToBase64(file) {
+
       return new Promise((resolve, reject) => {
+
         const reader = new FileReader();
+
         reader.onload = () => resolve(reader.result.split(",")[1]);
+
         reader.onerror = reject;
+
         reader.readAsDataURL(file);
+
       });
+
     }
+
+
 
     function fileToArrayBuffer(file) {
+
       return new Promise((resolve, reject) => {
+
         const reader = new FileReader();
+
         reader.onload = () => resolve(reader.result);
+
         reader.onerror = reject;
+
         reader.readAsArrayBuffer(file);
+
       });
+
     }
+
+
 
     async function extractDocxText(file) {
+
       const arrayBuffer = await fileToArrayBuffer(file);
+
       const result = await mammoth.extractRawText({ arrayBuffer });
+
       return result.value || "";
+
     }
+
+
 
     async function pdfToBase64Image(file) {
+
       if (typeof pdfjsLib === "undefined") {
-        throw new Error("PDF library not loaded.");
+
+        throw new Error("PDF processing library failed to load.");
+
       }
+
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
       const arrayBuffer = await fileToArrayBuffer(file);
+
       const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
       const totalPages = Math.min(pdfDoc.numPages, 3);
+
       const canvases = [];
+
       let totalHeight = 0, maxWidth = 0;
 
+
+
       for (let i = 1; i <= totalPages; i++) {
+
         const page = await pdfDoc.getPage(i);
+
         const viewport = page.getViewport({ scale: 2.0 });
+
         const canvas = document.createElement("canvas");
+
         canvas.width = viewport.width;
+
         canvas.height = viewport.height;
+
         await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+
         canvases.push(canvas);
+
         totalHeight += viewport.height;
+
         maxWidth = Math.max(maxWidth, viewport.width);
+
       }
+
+
 
       const merged = document.createElement("canvas");
+
       merged.width = maxWidth;
+
       merged.height = totalHeight;
+
       const ctx = merged.getContext("2d");
+
       ctx.fillStyle = "#fff";
+
       ctx.fillRect(0, 0, maxWidth, totalHeight);
 
+
+
       let y = 0;
+
       for (const c of canvases) { 
+
         ctx.drawImage(c, 0, y); 
+
         y += c.height; 
+
       }
+
       return merged.toDataURL("image/jpeg", 0.92).split(",")[1];
+
     }
+
+
 
     async function extractPdfText(file) {
+
       if (typeof pdfjsLib === "undefined") {
-        throw new Error("PDF library not loaded.");
+
+        throw new Error("PDF processing library failed to load.");
+
       }
+
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
       const arrayBuffer = await fileToArrayBuffer(file);
+
       const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
       const totalPages = Math.min(pdfDoc.numPages, 5);
+
       let fullText = "";
+
       for (let i = 1; i <= totalPages; i++) {
+
         const page = await pdfDoc.getPage(i);
+
         const content = await page.getTextContent();
+
         fullText += content.items.map(item => item.str).join(" ") + "\n";
+
       }
+
       return fullText.trim();
+
     }
 
-    // ─── ATS SCORE CALCULATOR (SCORE ONLY) ──────────────────
-    function evaluateATS(d) {
-      let score = 0;
-      let total = 0;
 
-      const check = (condition, weight) => {
-        total += weight;
-        if (condition) score += weight;
-      };
 
-      check(d.personal?.firstName && d.personal?.lastName, 10);
-      check(d.personal?.email, 10); 
-      check(d.personal?.phone, 10); 
-      check(d.personal?.linkedin, 5);
-      check(d.summary?.length > 40, 15);
-      check(d.experience?.some(e => e.company || e.title), 20);
-      check(d.experience?.some(e => e.resp && e.resp.length > 20), 10);
-      check(d.education?.some(e => e.college || e.degree), 10);
-      check(d.skills?.technical?.length > 0, 10);
+    function atsScore(d) {
 
-      return Math.round((score / total) * 100) || 0;
+      let s = 0, t = 0;
+
+      const a = (v, p) => { t += p; if (v) s += p; };
+
+      a(d.personal?.firstName && d.personal?.lastName, 5);
+
+      a(d.personal?.email, 5); 
+
+      a(d.personal?.phone, 5); 
+
+      a(d.personal?.linkedin, 3);
+
+      a(d.summary?.length > 80, 15);
+
+      a(d.experience?.some(e => e.company), 20);
+
+      a(d.experience?.some(e => e.resp?.length > 40), 10);
+
+      a(d.education?.some(e => e.college), 10);
+
+      a(d.skills?.technical?.length > 0, 10);
+
+      a(d.projects?.some(p => p.name), 7);
+
+      a(d.achievements?.awards || d.achievements?.hackathons, 5);
+
+      a(d.skills?.certifications?.length > 0, 5);
+
+      return Math.round((s / t) * 100) || 0;
+
     }
 
-    function formatResponsibilities(respText) {
-      if (!respText) return '';
-      const lines = respText.split('\n').map(l => l.replace(/^[•\-\*]\s*/, '').trim()).filter(Boolean);
-      if (lines.length === 0) return '';
-      return `<ul class="list-disc list-inside space-y-1 mt-1 text-slate-600">${lines.map(l => `<li>${l}</li>`).join('')}</ul>`;
-    }
+
 
     function blankData() {
+
       return {
+
         personal: { firstName: "", lastName: "", email: "", phone: "", city: "", state: "", country: "", linkedin: "", github: "", portfolio: "" },
+
         summary: "",
+
         education: [{ id: 1, college: "", degree: "", spec: "", cgpa: "", from: "", to: "", desc: "" }],
+
         experience: [{ id: 1, company: "", title: "", type: "Full-time", location: "", from: "", to: "", current: false, resp: "" }],
+
         projects: [{ id: 1, name: "", desc: "", tech: "", github: "", live: "" }],
+
         skills: { technical: [], soft: [], languages: [], certifications: [] },
+
         achievements: { awards: "", hackathons: "", publications: "", patents: "" }
+
       };
+
     }
+
+
 
     // ─── STATE MANAGEMENT ────────────────────────────────────────
+
     let state = {
+
       page: "landing",
+
       selectedTemplate: "one-pager",
+
       showTemplateModal: false,
+
       data: blankData(),
+
       toast: null,
+
       uploadProgress: null,
+
       uploadMessage: ""
+
     };
 
+
+
     function setState(patch) { 
+
       state = { ...state, ...patch }; 
+
       render(); 
+
     }
+
+
 
     function handleBack() {
+
       if (state.page === "preview") setState({ page: "builder" });
+
       else if (state.page === "builder" || state.page === "upload") setState({ page: "landing" });
+
     }
+
+
 
     function updData(path, val) {
+
       const n = JSON.parse(JSON.stringify(state.data));
+
       const keys = path.split(".");
+
       let cur = n;
+
       for (let i = 0; i < keys.length - 1; i++) {
+
         if (!cur[keys[i]]) cur[keys[i]] = {};
+
         cur = cur[keys[i]];
+
       }
+
       cur[keys[keys.length - 1]] = val;
+
       state.data = n; 
+
       render();
+
     }
+
+
 
     function addItem(section, itemSchema) {
+
       const list = [...(state.data[section] || [])];
+
       list.push({ ...itemSchema, id: Date.now() });
+
       updData(section, list);
+
     }
+
+
 
     function removeItem(section, idx) {
+
       const list = [...(state.data[section] || [])];
+
       list.splice(idx, 1);
+
       updData(section, list);
+
     }
+
+
 
     function updateArrayItem(section, idx, field, val) {
+
       const list = JSON.parse(JSON.stringify(state.data[section] || []));
+
       if (list[idx]) {
+
         list[idx][field] = val;
+
         updData(section, list);
+
       }
+
     }
+
+
 
     let toastTimer = null;
+
     function showToast(msg, type = "ok") {
+
       if (toastTimer) clearTimeout(toastTimer);
+
       state.toast = { msg, type }; 
+
       render();
+
       toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
+
     }
+
+
+
+    // ─── DOWNLOAD & ANALYTICS TRIGGER ─────────────────────────────
 
     function triggerDownload() {
+
       setState({ showTemplateModal: false });
+
+      
+
+      // Track Download Event in Vercel Analytics
+
       if (window.va) {
-        window.va('event', { name: 'CV Downloaded', data: { template: state.selectedTemplate } });
+
+        window.va('event', { 
+
+          name: 'CV Downloaded', 
+
+          data: { template: state.selectedTemplate } 
+
+        });
+
       }
+
+
+
       setTimeout(() => { window.print(); }, 200);
+
     }
 
-    // ─── UPLOAD PROCESSOR ──────────────────────────────────────
+
+
+    // ─── FILE UPLOAD PROCESSOR ──────────────────────────────────
+
     async function handleFileUpload(file) {
+
       if (!file) return;
-      setState({ uploadProgress: 20, uploadMessage: "Reading document..." });
+
+      setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
+
+
+
+      const systemPrompt = "Extract structured resume details into valid JSON matching the exact schema requested.";
+
+
 
       try {
-        let rawResponse = "";
+
+        let jsonStr = "";
+
         const fileType = file.name.split('.').pop().toLowerCase();
 
+
+
         if (fileType === "pdf") {
-          setState({ uploadProgress: 40, uploadMessage: "Extracting text..." });
+
+          setState({ uploadProgress: 40, uploadMessage: "Rendering PDF pages..." });
+
           try {
+
             const rawText = await extractPdfText(file);
-            if (rawText && rawText.length > 50) {
-              setState({ uploadProgress: 65, uploadMessage: "Analyzing structure..." });
-              rawResponse = await callClaudeWithText(rawText, SYSTEM_PARSER_PROMPT);
+
+            if (rawText && rawText.length > 100) {
+
+              setState({ uploadProgress: 60, uploadMessage: "Analyzing text structure..." });
+
+              jsonStr = await callClaudeWithText(rawText, systemPrompt);
+
             } else {
-              throw new Error("Empty text layer");
+
+              throw new Error("Text layer empty, switching to OCR...");
+
             }
+
           } catch (e) {
-            setState({ uploadProgress: 50, uploadMessage: "OCR scanning..." });
+
+            setState({ uploadProgress: 50, uploadMessage: "Processing scanned image..." });
+
             const base64Img = await pdfToBase64Image(file);
-            setState({ uploadProgress: 75, uploadMessage: "Extracting with visual AI..." });
-            rawResponse = await callClaudeWithImage(base64Img, "image/jpeg", "Parse resume details into structured JSON.", SYSTEM_PARSER_PROMPT);
+
+            setState({ uploadProgress: 75, uploadMessage: "AI visual extraction..." });
+
+            jsonStr = await callClaudeWithImage(base64Img, "image/jpeg", "Extract structured JSON from this resume image.", systemPrompt);
+
           }
+
         } else if (fileType === "docx") {
-          setState({ uploadProgress: 50, uploadMessage: "Parsing Word document..." });
+
+          setState({ uploadProgress: 50, uploadMessage: "Extracting Word document..." });
+
           const text = await extractDocxText(file);
-          setState({ uploadProgress: 75, uploadMessage: "Analyzing structure..." });
-          rawResponse = await callClaudeWithText(text, SYSTEM_PARSER_PROMPT);
+
+          setState({ uploadProgress: 75, uploadMessage: "Parsing data with AI..." });
+
+          jsonStr = await callClaudeWithText(text, systemPrompt);
+
         } else if (["jpg", "jpeg", "png", "webp"].includes(fileType)) {
+
           setState({ uploadProgress: 50, uploadMessage: "Encoding image..." });
+
           const base64 = await fileToBase64(file);
+
           const mime = file.type || `image/${fileType}`;
-          setState({ uploadProgress: 75, uploadMessage: "Extracting visual text..." });
-          rawResponse = await callClaudeWithImage(base64, mime, "Parse resume details into JSON.", SYSTEM_PARSER_PROMPT);
+
+          setState({ uploadProgress: 75, uploadMessage: "Parsing visual data..." });
+
+          jsonStr = await callClaudeWithImage(base64, mime, "Extract JSON from resume image.", systemPrompt);
+
         } else {
-          throw new Error("Unsupported format.");
+
+          throw new Error("Unsupported file format.");
+
         }
 
-        setState({ uploadProgress: 90, uploadMessage: "Finalizing data..." });
 
-        const parsed = cleanAndParseJson(rawResponse);
 
-        if (Array.isArray(parsed.experience)) {
-          parsed.experience = parsed.experience.map(exp => {
-            if (!exp.to || exp.to.toLowerCase().includes('present') || exp.current) {
-              return { ...exp, current: true, to: "Present" };
-            }
-            return exp;
-          });
-        }
+        setState({ uploadProgress: 90, uploadMessage: "Structuring resume..." });
+
+
+
+        const cleanJsonStr = repairJsonString(jsonStr);
+
+        const parsed = JSON.parse(cleanJsonStr);
+
+
 
         setState({
+
           data: { ...blankData(), ...parsed },
+
           page: "builder",
+
           uploadProgress: null,
+
           uploadMessage: ""
+
         });
-        showToast("Resume uploaded successfully!");
+
+        showToast("Resume parsed successfully!");
+
+
 
       } catch (err) {
-        console.error("Upload Error:", err);
-        setState({ uploadProgress: null, uploadMessage: `❌ Unable to parse resume. Please enter details manually.` });
+
+        console.error("Upload error:", err);
+
+        setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` });
+
       }
+
     }
 
-    // ─── CV RENDERER ──────────────────────────────────────────
+
+
+    // ─── TEMPLATE RENDERERS ─────────────────────────────────────
+
     function renderCVContent() {
+
       const d = state.data;
+
       const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
+
       const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+
       const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+
       const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+
       const t = state.selectedTemplate;
 
+
+
+      // 1. ONE PAGER TEMPLATE
+
       if (t === 'one-pager') {
+
         return `
+
           <div class="space-y-4 text-xs leading-tight">
+
+            <!-- Compact Header -->
+
             <div class="border-b border-slate-300 pb-2">
+
               <h1 class="text-2xl font-black text-slate-900 tracking-tight uppercase">${fullName}</h1>
+
               <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-600 font-medium mt-1">
+
                 ${d.personal?.email ? `<span>✉️ ${d.personal.email}</span>` : ''}
+
                 ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
+
                 ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
+
                 ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
-              </div>
-            </div>
 
-            ${d.summary ? `<div><p class="text-slate-700 leading-snug">${d.summary}</p></div>` : ''}
-
-            <div class="grid grid-cols-12 gap-4">
-              <div class="col-span-7 space-y-3">
-                ${d.experience?.length ? `
-                  <div>
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Experience</h2>
-                    <div class="space-y-2">
-                      ${d.experience.map(e => `
-                        <div>
-                          <div class="flex justify-between items-baseline font-bold text-slate-800">
-                            <span>${e.title || 'Role'} ${e.company ? `| ${e.company}` : ''}</span>
-                            <span class="text-[10px] text-slate-500 font-normal">${e.from || ''} - ${e.current ? 'Present' : (e.to || '')}</span>
-                          </div>
-                          ${formatResponsibilities(e.resp)}
-                        </div>
-                      `).join('')}
-                    </div>
-                  </div>
-                ` : ''}
-
-                ${d.projects?.length ? `
-                  <div>
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Key Projects</h2>
-                    <div class="space-y-2">
-                      ${d.projects.map(p => `
-                        <div>
-                          <div class="flex justify-between items-baseline font-bold text-slate-800">
-                            <span>${p.name || 'Project'}</span>
-                            ${p.tech ? `<span class="text-[10px] text-blue-600 font-medium">${p.tech}</span>` : ''}
-                          </div>
-                          <p class="text-slate-600 text-[11px] leading-snug">${p.desc || ''}</p>
-                        </div>
-                      `).join('')}
-                    </div>
-                  </div>
-                ` : ''}
               </div>
 
-              <div class="col-span-5 space-y-3 border-l border-slate-100 pl-3">
-                ${d.education?.length ? `
-                  <div>
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Education</h2>
-                    <div class="space-y-2">
-                      ${d.education.map(e => `
-                        <div>
-                          <div class="font-bold text-slate-800">${e.degree || ''} ${e.spec || ''}</div>
-                          <div class="text-slate-600 text-[11px]">${e.college || ''}</div>
-                          <div class="text-[10px] text-slate-400">${e.from || ''} - ${e.to || ''}</div>
-                        </div>
-                      `).join('')}
-                    </div>
-                  </div>
-                ` : ''}
-
-                ${techSkills.length || softSkills.length ? `
-                  <div>
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Skills</h2>
-                    <div class="space-y-1.5">
-                      ${techSkills.length ? `<div><span class="font-semibold text-slate-700 text-[11px]">Technical:</span><p class="text-slate-600 text-[11px] leading-tight">${techSkills.join(", ")}</p></div>` : ''}
-                      ${softSkills.length ? `<div><span class="font-semibold text-slate-700 text-[11px]">Soft Skills:</span><p class="text-slate-600 text-[11px] leading-tight">${softSkills.join(", ")}</p></div>` : ''}
-                    </div>
-                  </div>
-                ` : ''}
-
-                ${certs.length ? `
-                  <div>
-                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-1 tracking-wider">Certifications</h2>
-                    <ul class="list-disc list-inside text-slate-600 text-[11px] space-y-0.5">
-                      ${certs.map(c => `<li>${c}</li>`).join('')}
-                    </ul>
-                  </div>
-                ` : ''}
-              </div>
-            </div>
-          </div>
-        `;
-      }
-
-      if (t === 'modern') {
-        return `
-          <div class="grid grid-cols-3 gap-6 text-sm">
-            <div class="col-span-1 bg-slate-100/70 p-4 rounded-xl space-y-4">
-              <div>
-                <h1 class="text-xl font-bold text-slate-900">${fullName}</h1>
-                <div class="text-xs text-slate-600 space-y-1 mt-2">
-                  ${d.personal?.email ? `<p>✉️ ${d.personal.email}</p>` : ''}
-                  ${d.personal?.phone ? `<p>📞 ${d.personal.phone}</p>` : ''}
-                  ${d.personal?.linkedin ? `<p>🔗 ${d.personal.linkedin}</p>` : ''}
-                  ${d.personal?.github ? `<p>💻 ${d.personal.github}</p>` : ''}
-                </div>
-              </div>
-
-              ${techSkills.length || softSkills.length ? `
-                <div class="border-t border-slate-200 pt-3">
-                  <h3 class="font-bold text-slate-800 text-xs uppercase mb-2">Skills</h3>
-                  <div class="flex flex-wrap gap-1">
-                    ${[...techSkills, ...softSkills].map(s => `<span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded font-medium">${s}</span>`).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              ${d.education?.length ? `
-                <div class="border-t border-slate-200 pt-3 space-y-2">
-                  <h3 class="font-bold text-slate-800 text-xs uppercase">Education</h3>
-                  ${d.education.map(e => `
-                    <div>
-                      <p class="font-semibold text-xs text-slate-800">${e.degree || ''} ${e.spec || ''}</p>
-                      <p class="text-[11px] text-slate-600">${e.college || ''}</p>
-                      <p class="text-[10px] text-slate-400">${e.from || ''} - ${e.to || ''}</p>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
             </div>
 
-            <div class="col-span-2 space-y-4">
-              ${d.summary ? `
-                <div>
-                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">About Me</h2>
-                  <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
-                </div>
-              ` : ''}
 
-              ${d.experience?.length ? `
-                <div>
-                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Experience</h2>
-                  <div class="space-y-3">
-                    ${d.experience.map(e => `
-                      <div class="border-l-2 border-blue-500 pl-3">
-                        <p class="font-bold text-sm text-slate-800">${e.title || 'Role'} <span class="text-xs font-normal text-slate-500">at ${e.company || ''}</span></p>
-                        <p class="text-[10px] text-slate-400 mb-1">${e.from || ''} - ${e.current ? 'Present' : (e.to || '')}</p>
-                        ${formatResponsibilities(e.resp)}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
 
-              ${d.projects?.length ? `
-                <div>
-                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Projects</h2>
-                  <div class="space-y-2">
-                    ${d.projects.map(p => `
-                      <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
-                        <p class="font-semibold text-xs text-slate-800">${p.name || ''}</p>
-                        <p class="text-[11px] text-slate-600 mt-0.5">${p.desc || ''}</p>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-            </div>
-          </div>
-        `;
-      }
-
-      if (t === 'classic') {
-        return `
-          <div class="space-y-4 font-serif text-sm">
-            <div class="text-center border-b pb-3">
-              <h1 class="text-2xl font-bold uppercase tracking-wide text-slate-900">${fullName}</h1>
-              <div class="text-xs text-slate-600 flex justify-center gap-3 mt-1">
-                ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
-                ${d.personal?.phone ? `<span>• ${d.personal.phone}</span>` : ''}
-                ${d.personal?.linkedin ? `<span>• ${d.personal.linkedin}</span>` : ''}
-              </div>
-            </div>
+            <!-- Summary -->
 
             ${d.summary ? `
+
               <div>
-                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-1">Executive Summary</h2>
-                <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
+
+                <p class="text-slate-700 leading-snug">${d.summary}</p>
+
               </div>
+
             ` : ''}
 
-            ${d.experience?.length ? `
-              <div>
-                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-2">Professional Experience</h2>
-                <div class="space-y-3">
-                  ${d.experience.map(e => `
-                    <div>
-                      <div class="flex justify-between font-bold text-xs text-slate-800">
-                        <span>${e.title || 'Role'} — ${e.company || ''}</span>
-                        <span>${e.from || ''} – ${e.current ? 'Present' : (e.to || '')}</span>
-                      </div>
-                      ${formatResponsibilities(e.resp)}
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            ` : ''}
 
-            ${d.education?.length ? `
-              <div>
-                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-2">Education</h2>
-                <div class="space-y-2">
-                  ${d.education.map(e => `
-                    <div class="flex justify-between text-xs">
-                      <div>
-                        <span class="font-bold">${e.college || ''}</span> — ${e.degree || ''} ${e.spec || ''}
-                      </div>
-                      <span class="text-slate-500">${e.from || ''} – ${e.to || ''}</span>
+
+            <!-- Dense Two Column Layout -->
+
+            <div class="grid grid-cols-12 gap-4">
+
+              <!-- Left Column: Experience & Projects (7 cols) -->
+
+              <div class="col-span-7 space-y-3">
+
+                ${d.experience?.length ? `
+
+                  <div>
+
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Experience</h2>
+
+                    <div class="space-y-2">
+
+                      ${d.experience.map(e => `
+
+                        <div>
+
+                          <div class="flex justify-between items-baseline font-bold text-slate-800">
+
+                            <span>${e.title || 'Role'} ${e.company ? `| ${e.company}` : ''}</span>
+
+                            <span class="text-[10px] text-slate-500 font-normal">${e.from || ''} - ${e.to || ''}</span>
+
+                          </div>
+
+                          <p class="text-slate-600 mt-0.5 text-[11px] leading-snug">${e.resp || ''}</p>
+
+                        </div>
+
+                      `).join('')}
+
                     </div>
-                  `).join('')}
-                </div>
+
+                  </div>
+
+                ` : ''}
+
+
+
+                ${d.projects?.length ? `
+
+                  <div>
+
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Key Projects</h2>
+
+                    <div class="space-y-2">
+
+                      ${d.projects.map(p => `
+
+                        <div>
+
+                          <div class="flex justify-between items-baseline font-bold text-slate-800">
+
+                            <span>${p.name || 'Project'}</span>
+
+                            ${p.tech ? `<span class="text-[10px] text-blue-600 font-medium">${p.tech}</span>` : ''}
+
+                          </div>
+
+                          <p class="text-slate-600 text-[11px] leading-snug">${p.desc || ''}</p>
+
+                        </div>
+
+                      `).join('')}
+
+                    </div>
+
+                  </div>
+
+                ` : ''}
+
               </div>
-            ` : ''}
+
+
+
+              <!-- Right Column: Education & Skills (5 cols) -->
+
+              <div class="col-span-5 space-y-3 border-l border-slate-100 pl-3">
+
+                ${d.education?.length ? `
+
+                  <div>
+
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Education</h2>
+
+                    <div class="space-y-2">
+
+                      ${d.education.map(e => `
+
+                        <div>
+
+                          <div class="font-bold text-slate-800">${e.degree || ''} ${e.spec || ''}</div>
+
+                          <div class="text-slate-600 text-[11px]">${e.college || ''}</div>
+
+                          <div class="text-[10px] text-slate-400">${e.from || ''} - ${e.to || ''}</div>
+
+                        </div>
+
+                      `).join('')}
+
+                    </div>
+
+                  </div>
+
+                ` : ''}
+
+
+
+                ${techSkills.length || softSkills.length ? `
+
+                  <div>
+
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-2 tracking-wider">Skills</h2>
+
+                    <div class="space-y-1.5">
+
+                      ${techSkills.length ? `
+
+                        <div>
+
+                          <span class="font-semibold text-slate-700 text-[11px]">Technical:</span>
+
+                          <p class="text-slate-600 text-[11px] leading-tight">${techSkills.join(", ")}</p>
+
+                        </div>
+
+                      ` : ''}
+
+                      ${softSkills.length ? `
+
+                        <div>
+
+                          <span class="font-semibold text-slate-700 text-[11px]">Soft Skills:</span>
+
+                          <p class="text-slate-600 text-[11px] leading-tight">${softSkills.join(", ")}</p>
+
+                        </div>
+
+                      ` : ''}
+
+                    </div>
+
+                  </div>
+
+                ` : ''}
+
+
+
+                ${certs.length ? `
+
+                  <div>
+
+                    <h2 class="text-xs font-bold text-slate-900 uppercase border-b border-slate-300 pb-0.5 mb-1 tracking-wider">Certifications</h2>
+
+                    <ul class="list-disc list-inside text-slate-600 text-[11px] space-y-0.5">
+
+                      ${certs.map(c => `<li>${c}</li>`).join('')}
+
+                    </ul>
+
+                  </div>
+
+                ` : ''}
+
+              </div>
+
+            </div>
+
           </div>
+
         `;
+
       }
 
-      return `
-        <div class="space-y-5 text-sm font-sans">
-          <div>
-            <h1 class="text-3xl font-light text-slate-900 tracking-tight">${fullName}</h1>
-            <div class="flex gap-4 text-xs text-slate-400 mt-2">
-              ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
-              ${d.personal?.phone ? `<span>${d.personal.phone}</span>` : ''}
-              ${d.personal?.linkedin ? `<span>${d.personal.linkedin}</span>` : ''}
+
+
+      // 2. MODERN TEMPLATE
+
+      if (t === 'modern') {
+
+        return `
+
+          <div class="grid grid-cols-3 gap-6 text-sm">
+
+            <div class="col-span-1 bg-slate-100/70 p-4 rounded-xl space-y-4">
+
+              <div>
+
+                <h1 class="text-xl font-bold text-slate-900">${fullName}</h1>
+
+                <div class="text-xs text-slate-600 space-y-1 mt-2">
+
+                  ${d.personal?.email ? `<p>✉️ ${d.personal.email}</p>` : ''}
+
+                  ${d.personal?.phone ? `<p>📞 ${d.personal.phone}</p>` : ''}
+
+                  ${d.personal?.linkedin ? `<p>🔗 ${d.personal.linkedin}</p>` : ''}
+
+                  ${d.personal?.github ? `<p>💻 ${d.personal.github}</p>` : ''}
+
+                </div>
+
+              </div>
+
+
+
+              ${techSkills.length || softSkills.length ? `
+
+                <div class="border-t border-slate-200 pt-3">
+
+                  <h3 class="font-bold text-slate-800 text-xs uppercase mb-2">Skills</h3>
+
+                  <div class="flex flex-wrap gap-1">
+
+                    ${[...techSkills, ...softSkills].map(s => `<span class="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded font-medium">${s}</span>`).join('')}
+
+                  </div>
+
+                </div>
+
+              ` : ''}
+
+
+
+              ${d.education?.length ? `
+
+                <div class="border-t border-slate-200 pt-3 space-y-2">
+
+                  <h3 class="font-bold text-slate-800 text-xs uppercase">Education</h3>
+
+                  ${d.education.map(e => `
+
+                    <div>
+
+                      <p class="font-semibold text-xs text-slate-800">${e.degree || ''} ${e.spec || ''}</p>
+
+                      <p class="text-[11px] text-slate-600">${e.college || ''}</p>
+
+                      <p class="text-[10px] text-slate-400">${e.from || ''} - ${e.to || ''}</p>
+
+                    </div>
+
+                  `).join('')}
+
+                </div>
+
+              ` : ''}
+
             </div>
+
+
+
+            <div class="col-span-2 space-y-4">
+
+              ${d.summary ? `
+
+                <div>
+
+                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">About Me</h2>
+
+                  <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
+
+                </div>
+
+              ` : ''}
+
+
+
+              ${d.experience?.length ? `
+
+                <div>
+
+                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Experience</h2>
+
+                  <div class="space-y-3">
+
+                    ${d.experience.map(e => `
+
+                      <div class="border-l-2 border-blue-500 pl-3">
+
+                        <p class="font-bold text-sm text-slate-800">${e.title || 'Role'} <span class="text-xs font-normal text-slate-500">at ${e.company || ''}</span></p>
+
+                        <p class="text-[10px] text-slate-400 mb-1">${e.from || ''} - ${e.to || ''}</p>
+
+                        <p class="text-xs text-slate-600">${e.resp || ''}</p>
+
+                      </div>
+
+                    `).join('')}
+
+                  </div>
+
+                </div>
+
+              ` : ''}
+
+
+
+              ${d.projects?.length ? `
+
+                <div>
+
+                  <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Projects</h2>
+
+                  <div class="space-y-2">
+
+                    ${d.projects.map(p => `
+
+                      <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+
+                        <p class="font-semibold text-xs text-slate-800">${p.name || ''}</p>
+
+                        <p class="text-[11px] text-slate-600 mt-0.5">${p.desc || ''}</p>
+
+                      </div>
+
+                    `).join('')}
+
+                  </div>
+
+                </div>
+
+              ` : ''}
+
+            </div>
+
           </div>
+
+        `;
+
+      }
+
+
+
+      // 3. CLASSIC TEMPLATE
+
+      if (t === 'classic') {
+
+        return `
+
+          <div class="space-y-4 font-serif text-sm">
+
+            <div class="text-center border-b pb-3">
+
+              <h1 class="text-2xl font-bold uppercase tracking-wide text-slate-900">${fullName}</h1>
+
+              <div class="text-xs text-slate-600 flex justify-center gap-3 mt-1">
+
+                ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
+
+                ${d.personal?.phone ? `<span>• ${d.personal.phone}</span>` : ''}
+
+                ${d.personal?.linkedin ? `<span>• ${d.personal.linkedin}</span>` : ''}
+
+              </div>
+
+            </div>
+
+
+
+            ${d.summary ? `
+
+              <div>
+
+                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-1">Executive Summary</h2>
+
+                <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
+
+              </div>
+
+            ` : ''}
+
+
+
+            ${d.experience?.length ? `
+
+              <div>
+
+                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-2">Professional Experience</h2>
+
+                <div class="space-y-3">
+
+                  ${d.experience.map(e => `
+
+                    <div>
+
+                      <div class="flex justify-between font-bold text-xs text-slate-800">
+
+                        <span>${e.title || 'Role'} — ${e.company || ''}</span>
+
+                        <span>${e.from || ''} – ${e.to || ''}</span>
+
+                      </div>
+
+                      <p class="text-xs text-slate-600 mt-1">${e.resp || ''}</p>
+
+                    </div>
+
+                  `).join('')}
+
+                </div>
+
+              </div>
+
+            ` : ''}
+
+
+
+            ${d.education?.length ? `
+
+              <div>
+
+                <h2 class="text-xs font-bold uppercase border-b border-slate-300 pb-0.5 mb-2">Education</h2>
+
+                <div class="space-y-2">
+
+                  ${d.education.map(e => `
+
+                    <div class="flex justify-between text-xs">
+
+                      <div>
+
+                        <span class="font-bold">${e.college || ''}</span> — ${e.degree || ''} ${e.spec || ''}
+
+                      </div>
+
+                      <span class="text-slate-500">${e.from || ''} – ${e.to || ''}</span>
+
+                    </div>
+
+                  `).join('')}
+
+                </div>
+
+              </div>
+
+            ` : ''}
+
+          </div>
+
+        `;
+
+      }
+
+
+
+      // 4. MINIMAL TEMPLATE
+
+      return `
+
+        <div class="space-y-5 text-sm font-sans">
+
+          <div>
+
+            <h1 class="text-3xl font-light text-slate-900 tracking-tight">${fullName}</h1>
+
+            <div class="flex gap-4 text-xs text-slate-400 mt-2">
+
+              ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
+
+              ${d.personal?.phone ? `<span>${d.personal.phone}</span>` : ''}
+
+              ${d.personal?.linkedin ? `<span>${d.personal.linkedin}</span>` : ''}
+
+            </div>
+
+          </div>
+
+
 
           ${d.summary ? `<p class="text-xs text-slate-600 leading-relaxed">${d.summary}</p>` : ''}
 
+
+
           ${d.experience?.length ? `
+
             <div class="space-y-3">
+
               <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Experience</h2>
+
               ${d.experience.map(e => `
+
                 <div class="space-y-1">
+
                   <div class="flex justify-between text-xs">
+
                     <span class="font-medium text-slate-800">${e.title || ''}</span>
-                    <span class="text-slate-400">${e.from || ''} — ${e.current ? 'Present' : (e.to || '')}</span>
+
+                    <span class="text-slate-400">${e.from || ''} — ${e.to || ''}</span>
+
                   </div>
+
                   <p class="text-xs text-slate-500">${e.company || ''}</p>
-                  ${formatResponsibilities(e.resp)}
+
+                  <p class="text-xs text-slate-600 pt-1">${e.resp || ''}</p>
+
                 </div>
+
               `).join('')}
+
             </div>
+
           ` : ''}
+
         </div>
+
       `;
+
     }
+
+
 
     // ─── RENDER ENGINE ──────────────────────────────────────────
+
     function render() {
+
       const app = document.getElementById("app");
+
       const backBtn = document.getElementById("backBtn");
+
       
+
       backBtn.classList.toggle("hidden", state.page === "landing");
 
+
+
+      // Toast UI
+
       const toastEl = document.getElementById("toast");
+
       if (state.toast) {
+
         toastEl.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm flex items-center gap-2 ${
+
           state.toast.type === "ok" ? "bg-emerald-600" : "bg-red-600"
+
         }`;
+
         toastEl.innerHTML = state.toast.msg;
+
         toastEl.classList.remove("hidden");
+
       } else {
+
         toastEl.classList.add("hidden");
+
       }
+
+
+
+      // Page Router
 
       if (state.page === "landing") {
+
         app.innerHTML = `
+
           <div class="text-center py-16 max-w-3xl mx-auto space-y-6">
+
             <span class="bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1 rounded-full border border-blue-100">✨ Zero fees · No signup · AI-powered</span>
+
             <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
+
               Create your CV in minutes — <span class="text-blue-600">100% free, always.</span>
+
             </h1>
+
             <p class="text-slate-600 text-lg">Upload your existing CV to auto-fill, or build from scratch with AI assistance.</p>
+
             <div class="flex items-center justify-center gap-4 pt-4">
+
               <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3.5 rounded-xl shadow-md transition-all">
+
                 ⚡ Build My CV — Free
+
               </button>
+
               <button onclick="setState({ page: 'upload' })" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-6 py-3.5 rounded-xl transition-all">
+
                 📄 Upload & Reformat CV
+
               </button>
+
             </div>
+
           </div>
+
         `;
+
       } else if (state.page === "upload") {
+
         app.innerHTML = `
+
           <div class="max-w-2xl mx-auto w-full space-y-6">
+
             <div class="text-center space-y-2">
+
               <h2 class="text-3xl font-bold text-slate-900">Upload Your CV</h2>
+
               <p class="text-slate-500 text-sm">Upload your resume and AI will extract all your details automatically.</p>
+
             </div>
+
+
 
             <div id="dropZone" class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/50 rounded-2xl p-10 text-center transition-all cursor-pointer">
+
               <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" class="hidden" onchange="handleFileUpload(this.files[0])"/>
+
               <div onclick="document.getElementById('fileInput').click()" class="space-y-4">
+
                 <div class="w-16 h-16 bg-white rounded-full shadow-sm mx-auto flex items-center justify-center text-blue-600">☁️</div>
+
                 <div>
+
                   <p class="font-semibold text-slate-700">Drag & drop your resume here</p>
+
                   <p class="text-xs text-slate-400 mt-1">or click below to browse</p>
+
                 </div>
+
                 <button type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all">
+
                   📁 Choose File
+
                 </button>
+
               </div>
+
             </div>
 
-            ${state.uploadProgress ? `
-              <div class="space-y-2">
-                <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                  <div class="bg-blue-600 h-full transition-all duration-300" style="width: ${state.uploadProgress}%"></div>
-                </div>
-                <p class="text-center text-xs font-medium text-slate-500">${state.uploadMessage}</p>
-              </div>
-            ` : ''}
 
-            ${state.uploadMessage && !state.uploadProgress ? `
+
+            ${state.uploadMessage ? `
+
               <p class="text-center text-sm font-medium ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-blue-600'}">
+
                 ${state.uploadMessage}
+
               </p>
+
             ` : ''}
+
           </div>
+
         `;
-      } else if (state.page === "builder") {
-        const score = evaluateATS(state.data);
-        app.innerHTML = `
-          <div class="grid grid-cols-12 gap-8">
-            <!-- Form Panel -->
-            <div class="col-span-12 lg:col-span-7 space-y-6">
-              
-              <!-- Clean ATS Score Display (Score Only) -->
-              <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <h3 class="font-bold text-slate-800 text-base">ATS Optimization Score</h3>
-                    <p class="text-xs text-slate-500">Real-time check based on hiring criteria</p>
-                  </div>
-                  <span class="text-2xl font-black ${score >= 80 ? 'text-emerald-600' : score >= 50 ? 'text-amber-500' : 'text-red-500'}">${score}%</span>
-                </div>
-                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                  <div class="h-full ${score >= 80 ? 'bg-emerald-500' : score >= 50 ? 'bg-amber-500' : 'bg-red-500'} transition-all duration-500" style="width: ${score}%"></div>
-                </div>
-              </div>
 
-              <!-- Personal Information -->
-              <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <h3 class="font-bold text-slate-800 text-lg">Personal Details</h3>
-                <div class="grid grid-cols-2 gap-4">
-                  <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">First Name</label>
-                    <input type="text" value="${state.data.personal?.firstName || ''}" onchange="updData('personal.firstName', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Last Name</label>
-                    <input type="text" value="${state.data.personal?.lastName || ''}" onchange="updData('personal.lastName', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
-                    <input type="email" value="${state.data.personal?.email || ''}" onchange="updData('personal.email', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
-                  </div>
-                  <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Phone</label>
-                    <input type="text" value="${state.data.personal?.phone || ''}" onchange="updData('personal.phone', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
-                  </div>
-                  <div class="col-span-2">
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">LinkedIn Profile</label>
-                    <input type="text" value="${state.data.personal?.linkedin || ''}" onchange="updData('personal.linkedin', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
-                  </div>
-                </div>
-              </div>
+      } else if (st 
 
-              <!-- Executive Summary -->
-              <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <h3 class="font-bold text-slate-800 text-lg">Professional Summary</h3>
-                <textarea rows="3" onchange="updData('summary', this.value)" class="w-full text-sm border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500">${state.data.summary || ''}</textarea>
-              </div>
-
-              <!-- Work Experience -->
-              <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <div class="flex justify-between items-center">
-                  <h3 class="font-bold text-slate-800 text-lg">💼 Work Experience</h3>
-                  <button onclick="addItem('experience', { company: '', title: '', from: '', to: '', current: false, resp: '' })" class="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold px-3 py-1.5 rounded-lg border border-blue-200 transition-all">+ Add Position</button>
-                </div>
-                
-                ${(state.data.experience || []).map((exp, idx) => `
-                  <div class="border border-slate-100 bg-slate-50/50 p-4 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('experience', ${idx})" class="absolute top-3 right-3 text-xs text-red-500 hover:underline">Remove</button>
-                    
-                    <div class="grid grid-cols-2 gap-3">
-                      <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Company</label>
-                        <input type="text" value="${exp.company || ''}" onchange="updateArrayItem('experience', ${idx}, 'company', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Job Title</label>
-                        <input type="text" value="${exp.title || ''}" onchange="updateArrayItem('experience', ${idx}, 'title', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">From</label>
-                        <input type="text" value="${exp.from || ''}" onchange="updateArrayItem('experience', ${idx}, 'from', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white" placeholder="e.g. September 2017"/>
-                      </div>
-                      <div>
-                        <div class="flex justify-between items-center mb-1">
-                          <label class="text-xs font-semibold text-slate-600">To</label>
-                          <label class="flex items-center gap-1 text-[11px] text-blue-600 font-medium cursor-pointer">
-                            <input type="checkbox" ${exp.current ? 'checked' : ''} onchange="updateArrayItem('experience', ${idx}, 'current', this.checked); if(this.checked){ updateArrayItem('experience', ${idx}, 'to', 'Present'); }" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500"/>
-                            Currently Work Here
-                          </label>
-                        </div>
-                        <input type="text" value="${exp.current ? 'Present' : (exp.to || '')}" ${exp.current ? 'disabled' : ''} onchange="updateArrayItem('experience', ${idx}, 'to', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2 bg-white disabled:bg-slate-100 disabled:text-slate-500" placeholder="e.g. Present"/>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label class="block text-xs font-semibold text-slate-600 mb-1">Responsibilities (Use separate lines for bullet points)</label>
-                      <textarea rows="4" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full text-sm border border-slate-200 rounded-lg p-2.5 bg-white font-mono leading-relaxed" placeholder="• Led cross-functional teams...\n• Increased overall conversion rates by 25%...">${exp.resp || ''}</textarea>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-
-              <!-- Skills -->
-              <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <h3 class="font-bold text-slate-800 text-lg">Skills & Certifications</h3>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Technical Skills (Comma separated)</label>
-                  <input type="text" value="${(state.data.skills?.technical || []).join(', ')}" onchange="updData('skills.technical', this.value.split(',').map(s => s.trim()).filter(Boolean))" class="w-full text-sm border border-slate-200 rounded-xl p-2.5 outline-none focus:border-blue-500"/>
-                </div>
-              </div>
-
-            </div>
-
-            <!-- Preview Sidebar -->
-            <div class="col-span-12 lg:col-span-5 border border-slate-200 bg-white rounded-2xl p-6 shadow-sm h-fit sticky top-24">
-              <div class="flex justify-between items-center mb-4">
-                <h3 class="font-bold text-slate-800">Preview</h3>
-                <button onclick="setState({ page: 'preview' })" class="text-xs bg-blue-600 text-white font-semibold px-3 py-1.5 rounded-lg">Full Screen Preview</button>
-              </div>
-
-              <div class="border border-slate-100 rounded-xl p-4 bg-white shadow-inner max-h-[600px] overflow-y-auto">
-                ${renderCVContent()}
-              </div>
-            </div>
-          </div>
-        `;
-      } else if (state.page === "preview") {
-        app.innerHTML = `
-          <div class="max-w-4xl mx-auto space-y-6">
-            <div class="flex justify-between items-center no-print">
-              <div class="flex items-center gap-3">
-                <label class="text-xs font-semibold text-slate-600">Template:</label>
-                <select onchange="setState({ selectedTemplate: this.value })" class="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white">
-                  <option value="one-pager" ${state.selectedTemplate === 'one-pager' ? 'selected' : ''}>One Pager (Compact)</option>
-                  <option value="modern" ${state.selectedTemplate === 'modern' ? 'selected' : ''}>Modern Two-Column</option>
-                  <option value="classic" ${state.selectedTemplate === 'classic' ? 'selected' : ''}>Executive Classic</option>
-                  <option value="minimal" ${state.selectedTemplate === 'minimal' ? 'selected' : ''}>Minimalist</option>
-                </select>
-              </div>
-
-              <button onclick="triggerDownload()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs px-4 py-2 rounded-xl transition-all shadow-sm">
-                🖨️ Download / Print PDF
-              </button>
-            </div>
-
-            <div id="cv-preview-card" class="bg-white border border-slate-200 p-8 rounded-2xl shadow-md min-h-[900px]">
-              ${renderCVContent()}
-            </div>
-          </div>
-        `;
-      }
-    }
-
-    // Initialize App
-    render();
-  </script>
-</body>
-</html>
