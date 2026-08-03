@@ -1,425 +1,454 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Resume & CV Builder</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Resunex — Create Your CV Free</title>
+  
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    @media print {
-      body * {
-        visibility: hidden;
-      }
-      #cv-preview-card, #cv-preview-card * {
-        visibility: visible;
-      }
-      #cv-preview-card {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        margin: 0;
-        padding: 0;
-        box-shadow: none;
-        border: none;
-      }
-      .no-print {
-        display: none !important;
-      }
-    }
-  </style>
+  
+  <!-- PDF.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  
+  <!-- Mammoth.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
 
-  <!-- Header / Navbar -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-3 cursor-pointer" onclick="setState({ page: 'builder' })">
-        <span class="text-2xl">⚡</span>
-        <h1 class="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-          Resume Builder
-        </h1>
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <button id="backBtn" onclick="setState({ page: 'landing' })" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">
+          ← Back
+        </button>
+        <span class="text-xl font-black tracking-tight text-blue-600">Resunex</span>
       </div>
       <div class="flex items-center gap-3">
-        <button onclick="setState({ page: 'builder' })" class="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg">
-          Editor
-        </button>
-        <button onclick="setState({ page: 'preview' })" class="text-sm font-semibold text-slate-600 hover:text-slate-900 px-3 py-2 rounded-lg">
-          Preview
+        <button onclick="setState({ page: 'upload' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5">Upload CV</button>
+        <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-xl shadow-sm transition-all">
+          ⚡ Create CV
         </button>
       </div>
     </div>
   </header>
 
   <!-- Main Container -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <div id="app"></div>
+  <main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
+    <!-- Dynamic Content Rendered Here -->
   </main>
 
+  <!-- Toast Notification Container -->
+  <div id="toast" class="fixed bottom-6 right-6 hidden z-50"></div>
+
+  <!-- JavaScript Logic -->
   <script>
-    // Application State
-    let state = {
-      page: 'builder', // 'builder' or 'preview'
-      selectedTemplate: 'one-pager', // 'one-pager', 'modern', 'classic', 'minimal'
-      data: {
-        personal: {
-          firstName: 'John',
-          lastName: 'Doe',
-          email: 'john.doe@example.com',
-          phone: '+1 (555) 019-2834',
-          linkedin: 'linkedin.com/in/johndoe',
-          github: 'github.com/johndoe'
-        },
-        summary: 'Results-driven Professional with experience in developing scalable applications, optimizing workflow automation, and delivering data-driven solutions.',
-        experience: [
-          {
-            id: 1,
-            company: 'Tech Solutions Inc.',
-            title: 'Senior Developer',
-            from: 'Jan 2022',
-            to: 'Present',
-            resp: 'Led a team of 5 engineers building modern web applications. Improved pipeline speed by 40%.'
-          }
-        ],
-        education: [
-          {
-            id: 1,
-            college: 'State University',
-            degree: 'B.S.',
-            spec: 'Computer Science',
-            from: '2017',
-            to: '2021'
-          }
-        ],
-        skills: {
-          technical: ['JavaScript', 'Tailwind CSS', 'HTML5', 'Node.js', 'Git'],
-          soft: ['Problem Solving', 'Team Leadership', 'Agile Methodologies']
-        }
+    // ─── CONFIG ───────────────────────────────────────────────
+    const API = "/api/claude";
+    const MODEL = "gemini-2.5-flash";
+
+    // ─── API HELPERS ──────────────────────────────────────────
+    async function callClaude(messages, system, maxTokens = 2000) {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+      return data.content?.[0]?.text || "";
+    }
+
+    async function callClaudeWithImage(base64, mimeType, prompt, system) {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 4000,
+          system,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
+              { type: "text", text: prompt }
+            ]
+          }]
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+      return data.content?.[0]?.text || "";
+    }
+
+    async function callClaudeWithText(text, system) {
+      const res = await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 4000,
+          system,
+          messages: [{ role: "user", content: `Parse this resume content into structured JSON:\n\n${text}` }]
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
+      return data.content?.[0]?.text || "";
+    }
+
+    // ─── ROBUST JSON REPAIR & SANITIZATION ───────────────────
+    function repairJsonString(rawStr) {
+      if (!rawStr) return "{}";
+      
+      let str = rawStr.trim();
+
+      // Extract JSON bounds
+      const startIdx = str.indexOf('{');
+      const endIdx = str.lastIndexOf('}');
+      if (startIdx !== -1 && endIdx !== -1) {
+        str = str.substring(startIdx, endIdx + 1);
       }
+
+      // Convert literal unescaped newlines/tabs inside string values into valid escaped sequences
+      str = str.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
+        return match
+          .replace(/\n/g, "\\n")
+          .replace(/\r/g, "\\r")
+          .replace(/\t/g, "\\t");
+      });
+
+      // Remove illegal non-printable control characters
+      str = str.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
+
+      // Fix trailing commas before closing braces or brackets
+      str = str.replace(/,\s*([}\]])/g, '$1');
+
+      return str;
+    }
+
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function fileToArrayBuffer(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    async function extractDocxText(file) {
+      const arrayBuffer = await fileToArrayBuffer(file);
+      const result = await mammoth.extractRawText({ arrayBuffer });
+      return result.value || "";
+    }
+
+    async function pdfToBase64Image(file) {
+      if (typeof pdfjsLib === "undefined") {
+        throw new Error("PDF processing library failed to load.");
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      const arrayBuffer = await fileToArrayBuffer(file);
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const totalPages = Math.min(pdfDoc.numPages, 3);
+      const canvases = [];
+      let totalHeight = 0, maxWidth = 0;
+
+      for (let i = 1; i <= totalPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+        canvases.push(canvas);
+        totalHeight += viewport.height;
+        maxWidth = Math.max(maxWidth, viewport.width);
+      }
+
+      const merged = document.createElement("canvas");
+      merged.width = maxWidth;
+      merged.height = totalHeight;
+      const ctx = merged.getContext("2d");
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, 0, maxWidth, totalHeight);
+
+      let y = 0;
+      for (const c of canvases) { 
+        ctx.drawImage(c, 0, y); 
+        y += c.height; 
+      }
+      return merged.toDataURL("image/jpeg", 0.92).split(",")[1];
+    }
+
+    async function extractPdfText(file) {
+      if (typeof pdfjsLib === "undefined") {
+        throw new Error("PDF processing library failed to load.");
+      }
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      const arrayBuffer = await fileToArrayBuffer(file);
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const totalPages = Math.min(pdfDoc.numPages, 5);
+      let fullText = "";
+      for (let i = 1; i <= totalPages; i++) {
+        const page = await pdfDoc.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(" ") + "\n";
+      }
+      return fullText.trim();
+    }
+
+    function atsScore(d) {
+      let s = 0, t = 0;
+      const a = (v, p) => { t += p; if (v) s += p; };
+      a(d.personal?.firstName && d.personal?.lastName, 5);
+      a(d.personal?.email, 5); 
+      a(d.personal?.phone, 5); 
+      a(d.personal?.linkedin, 3);
+      a(d.summary?.length > 80, 15);
+      a(d.experience?.some(e => e.company), 20);
+      a(d.experience?.some(e => e.resp?.length > 40), 10);
+      a(d.education?.some(e => e.college), 10);
+      a(d.skills?.technical?.length > 2, 10);
+      a(d.projects?.some(p => p.name), 7);
+      a(d.achievements?.awards || d.achievements?.hackathons, 5);
+      a(d.skills?.certifications?.length > 0, 5);
+      return Math.round((s / t) * 100) || 0;
+    }
+
+    function blankData() {
+      return {
+        personal: { firstName: "", lastName: "", email: "", phone: "", city: "", state: "", country: "", linkedin: "", github: "", portfolio: "" },
+        summary: "",
+        education: [{ id: 1, college: "", degree: "", spec: "", cgpa: "", from: "", to: "", desc: "" }],
+        experience: [{ id: 1, company: "", title: "", type: "Full-time", location: "", from: "", to: "", current: false, resp: "" }],
+        projects: [{ id: 1, name: "", desc: "", tech: "", github: "", live: "" }],
+        skills: { technical: [], soft: [], languages: [], certifications: [] },
+        achievements: { awards: "", hackathons: "", publications: "", patents: "" },
+        template: "minimal"
+      };
+    }
+
+    // ─── STATE MANAGEMENT ────────────────────────────────────────
+    let state = {
+      page: "landing",
+      step: 0,
+      data: blankData(),
+      aiLoading: {},
+      toast: null,
+      preview: false,
+      uploadProgress: null,
+      uploadMessage: ""
     };
 
-    // State Mutators
-    function setState(newState) {
-      state = { ...state, ...newState };
-      render();
+    function setState(patch) { 
+      state = { ...state, ...patch }; 
+      render(); 
     }
 
     function updData(path, val) {
-      const parts = path.split('.');
-      let obj = state.data;
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (!obj[parts[i]]) obj[parts[i]] = {};
-        obj = obj[parts[i]];
+      const n = JSON.parse(JSON.stringify(state.data));
+      const keys = path.split(".");
+      let cur = n;
+      for (let i = 0; i < keys.length - 1; i++) cur = cur[keys[i]];
+      cur[keys[keys.length - 1]] = val;
+      state.data = n; 
+      render();
+    }
+
+    let toastTimer = null;
+    function showToast(msg, type = "ok") {
+      if (toastTimer) clearTimeout(toastTimer);
+      state.toast = { msg, type }; 
+      render();
+      toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
+    }
+
+    // ─── FILE UPLOAD PROCESSOR ──────────────────────────────────
+    async function handleFileUpload(file) {
+      if (!file) return;
+      setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
+
+      const systemPrompt = "Extract structured resume details into valid JSON matching the exact schema requested.";
+
+      try {
+        let jsonStr = "";
+        const fileType = file.name.split('.').pop().toLowerCase();
+
+        if (fileType === "pdf") {
+          setState({ uploadProgress: 40, uploadMessage: "Rendering PDF pages..." });
+          try {
+            const rawText = await extractPdfText(file);
+            if (rawText && rawText.length > 100) {
+              setState({ uploadProgress: 60, uploadMessage: "Analyzing text structure..." });
+              jsonStr = await callClaudeWithText(rawText, systemPrompt);
+            } else {
+              throw new Error("Text layer empty, switching to OCR...");
+            }
+          } catch (e) {
+            setState({ uploadProgress: 50, uploadMessage: "Processing scanned image..." });
+            const base64Img = await pdfToBase64Image(file);
+            setState({ uploadProgress: 75, uploadMessage: "AI visual extraction..." });
+            jsonStr = await callClaudeWithImage(base64Img, "image/jpeg", "Extract structured JSON from this resume image.", systemPrompt);
+          }
+        } else if (fileType === "docx") {
+          setState({ uploadProgress: 50, uploadMessage: "Extracting Word document..." });
+          const text = await extractDocxText(file);
+          setState({ uploadProgress: 75, uploadMessage: "Parsing data with AI..." });
+          jsonStr = await callClaudeWithText(text, systemPrompt);
+        } else if (["jpg", "jpeg", "png", "webp"].includes(fileType)) {
+          setState({ uploadProgress: 50, uploadMessage: "Encoding image..." });
+          const base64 = await fileToBase64(file);
+          const mime = file.type || `image/${fileType}`;
+          setState({ uploadProgress: 75, uploadMessage: "Parsing visual data..." });
+          jsonStr = await callClaudeWithImage(base64, mime, "Extract JSON from resume image.", systemPrompt);
+        } else {
+          throw new Error("Unsupported file format.");
+        }
+
+        setState({ uploadProgress: 90, uploadMessage: "Structuring resume..." });
+
+        // Sanitize string before JSON.parse
+        const cleanJsonStr = repairJsonString(jsonStr);
+        const parsed = JSON.parse(cleanJsonStr);
+
+        setState({
+          data: { ...blankData(), ...parsed },
+          page: "builder",
+          uploadProgress: null,
+          uploadMessage: ""
+        });
+        showToast("Resume parsed successfully!");
+
+      } catch (err) {
+        console.error("Upload error:", err);
+        setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` });
       }
-      obj[parts[parts.length - 1]] = val;
-      render();
     }
 
-    function updateArrayItem(section, index, field, value) {
-      state.data[section][index][field] = value;
-      render();
-    }
-
-    function addItem(section, defaultItem) {
-      if (!state.data[section]) state.data[section] = [];
-      state.data[section].push(defaultItem);
-      render();
-    }
-
-    function removeItem(section, index) {
-      state.data[section].splice(index, 1);
-      render();
-    }
-
-    // Helper: ATS Score Calculator
-    function atsScore(d) {
-      let score = 0;
-      if (d.personal?.firstName && d.personal?.lastName) score += 15;
-      if (d.personal?.email && d.personal?.phone) score += 15;
-      if (d.summary && d.summary.length > 30) score += 20;
-      if (d.experience && d.experience.length > 0) score += 25;
-      if (d.education && d.education.length > 0) score += 15;
-      if (d.skills?.technical && d.skills.technical.length > 0) score += 10;
-      return score;
-    }
-
-    function triggerDownload() {
-      window.print();
-    }
-
-    // Render CV Preview HTML according to active template
-    function renderCVContent() {
-      const d = state.data;
-      const t = state.selectedTemplate;
-
-      if (t === 'minimal') {
-        return `
-          <div class="space-y-6 text-slate-800 font-mono text-xs">
-            <div class="border-b border-slate-300 pb-4">
-              <h1 class="text-2xl font-bold uppercase tracking-wider">${d.personal?.firstName || ''} ${d.personal?.lastName || ''}</h1>
-              <p class="text-slate-500 mt-1">${d.personal?.email || ''} | ${d.personal?.phone || ''} | ${d.personal?.linkedin || ''}</p>
-            </div>
-            ${d.summary ? `<div><h2 class="font-bold uppercase text-slate-400 mb-1">// Summary</h2><p>${d.summary}</p></div>` : ''}
-            <div>
-              <h2 class="font-bold uppercase text-slate-400 mb-2">// Experience</h2>
-              ${(d.experience || []).map(e => `
-                <div class="mb-3">
-                  <div class="flex justify-between font-bold"><span>${e.title || ''} @ ${e.company || ''}</span><span>${e.from || ''} - ${e.to || ''}</span></div>
-                  <p class="mt-1 text-slate-600">${e.resp || ''}</p>
-                </div>
-              `).join('')}
-            </div>
-            <div>
-              <h2 class="font-bold uppercase text-slate-400 mb-2">// Education</h2>
-              ${(d.education || []).map(e => `
-                <div class="flex justify-between"><span>${e.degree || ''} ${e.spec || ''}, ${e.college || ''}</span><span>${e.from || ''} - ${e.to || ''}</span></div>
-              `).join('')}
-            </div>
-          </div>
-        `;
-      }
-
-      if (t === 'classic') {
-        return `
-          <div class="space-y-6 text-slate-900 font-serif">
-            <div class="text-center border-b-2 border-slate-800 pb-4">
-              <h1 class="text-3xl font-bold tracking-tight">${d.personal?.firstName || ''} ${d.personal?.lastName || ''}</h1>
-              <div class="text-sm text-slate-600 mt-2 space-x-2">
-                <span>${d.personal?.email || ''}</span> • 
-                <span>${d.personal?.phone || ''}</span> • 
-                <span>${d.personal?.linkedin || ''}</span>
-              </div>
-            </div>
-            ${d.summary ? `<div><h2 class="text-lg font-bold border-b border-slate-300 uppercase tracking-wide mb-2">Professional Summary</h2><p class="text-sm leading-relaxed">${d.summary}</p></div>` : ''}
-            <div>
-              <h2 class="text-lg font-bold border-b border-slate-300 uppercase tracking-wide mb-3">Experience</h2>
-              ${(d.experience || []).map(e => `
-                <div class="mb-4">
-                  <div class="flex justify-between items-baseline"><h3 class="font-bold text-base">${e.company || ''}</h3><span class="text-sm italic text-slate-600">${e.from || ''} – ${e.to || ''}</span></div>
-                  <div class="italic text-sm font-semibold text-slate-700">${e.title || ''}</div>
-                  <p class="text-sm mt-1 text-slate-800 leading-normal">${e.resp || ''}</p>
-                </div>
-              `).join('')}
-            </div>
-            <div>
-              <h2 class="text-lg font-bold border-b border-slate-300 uppercase tracking-wide mb-3">Education</h2>
-              ${(d.education || []).map(e => `
-                <div class="flex justify-between items-baseline mb-2"><span class="font-bold text-sm">${e.college || ''} — <i>${e.degree || ''} ${e.spec || ''}</i></span><span class="text-sm italic">${e.from || ''} – ${e.to || ''}</span></div>
-              `).join('')}
-            </div>
-          </div>
-        `;
-      }
-
-      // Default: Modern / One-Pager
-      return `
-        <div class="space-y-6 text-slate-800 font-sans">
-          <div class="border-b border-slate-200 pb-4">
-            <h1 class="text-3xl font-black text-slate-900">${d.personal?.firstName || ''} ${d.personal?.lastName || ''}</h1>
-            <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 font-medium mt-2">
-              ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
-              ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
-              ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
-              ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
-            </div>
-          </div>
-
-          ${d.summary ? `
-            <div>
-              <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Profile</h2>
-              <p class="text-xs text-slate-600 leading-relaxed">${d.summary}</p>
-            </div>
-          ` : ''}
-
-          <div>
-            <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-3">Work Experience</h2>
-            <div class="space-y-4">
-              ${(d.experience || []).map(e => `
-                <div>
-                  <div class="flex justify-between items-baseline">
-                    <span class="font-bold text-sm text-slate-900">${e.title || 'Job Title'}</span>
-                    <span class="text-[10px] font-semibold text-slate-400">${e.from || ''} - ${e.to || ''}</span>
-                  </div>
-                  <div class="text-xs font-medium text-slate-500 mb-1">${e.company || ''}</div>
-                  <p class="text-xs text-slate-600 leading-normal">${e.resp || ''}</p>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-
-          <div>
-            <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Education</h2>
-            <div class="space-y-2">
-              ${(d.education || []).map(e => `
-                <div class="flex justify-between text-xs">
-                  <div>
-                    <span class="font-bold text-slate-800">${e.degree || ''} ${e.spec ? `in ${e.spec}` : ''}</span>
-                    <span class="text-slate-500"> • ${e.college || ''}</span>
-                  </div>
-                  <span class="text-slate-400 font-medium text-[10px]">${e.from || ''} - ${e.to || ''}</span>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-
-          ${(d.skills?.technical?.length > 0 || d.skills?.soft?.length > 0) ? `
-            <div>
-              <h2 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Skills</h2>
-              <div class="flex flex-wrap gap-1.5">
-                ${(d.skills?.technical || []).map(s => `<span class="bg-slate-100 text-slate-700 text-[11px] font-medium px-2 py-0.5 rounded">${s}</span>`).join('')}
-                ${(d.skills?.soft || []).map(s => `<span class="bg-blue-50 text-blue-700 text-[11px] font-medium px-2 py-0.5 rounded">${s}</span>`).join('')}
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      `;
-    }
-
-    // Main App Renderer
+    // ─── RENDER ENGINE ──────────────────────────────────────────
     function render() {
       const app = document.getElementById("app");
+      const backBtn = document.getElementById("backBtn");
+      
+      backBtn.classList.toggle("hidden", state.page === "landing");
 
-      if (state.page === "builder") {
-        const d = state.data;
-        const score = atsScore(d);
+      // Toast UI
+      const toastEl = document.getElementById("toast");
+      if (state.toast) {
+        toastEl.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm flex items-center gap-2 ${
+          state.toast.type === "ok" ? "bg-emerald-600" : "bg-red-600"
+        }`;
+        toastEl.innerHTML = state.toast.msg;
+        toastEl.classList.remove("hidden");
+      } else {
+        toastEl.classList.add("hidden");
+      }
 
+      // Page Router
+      if (state.page === "landing") {
         app.innerHTML = `
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            <!-- Left Column: Form Editor (7 cols) -->
-            <div class="lg:col-span-7 space-y-6">
-              
-              <!-- Personal Info -->
-              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">👤 Personal Details</h3>
-                <div class="grid grid-cols-2 gap-4">
-                  <input type="text" placeholder="First Name" value="${d.personal?.firstName || ''}" oninput="updData('personal.firstName', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <input type="text" placeholder="Last Name" value="${d.personal?.lastName || ''}" oninput="updData('personal.lastName', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <input type="email" placeholder="Email" value="${d.personal?.email || ''}" oninput="updData('personal.email', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <input type="text" placeholder="Phone" value="${d.personal?.phone || ''}" oninput="updData('personal.phone', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <input type="text" placeholder="LinkedIn URL" value="${d.personal?.linkedin || ''}" oninput="updData('personal.linkedin', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                  <input type="text" placeholder="GitHub URL" value="${d.personal?.github || ''}" oninput="updData('personal.github', this.value)" class="p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-              </div>
-
-              <!-- Summary -->
-              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">📝 Professional Summary</h3>
-                <textarea rows="3" placeholder="Brief executive summary..." oninput="updData('summary', this.value)" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">${d.summary || ''}</textarea>
-              </div>
-
-              <!-- Experience -->
-              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <div class="flex justify-between items-center">
-                  <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">💼 Experience</h3>
-                  <button onclick="addItem('experience', { id: Date.now(), company: '', title: '', from: '', to: '', resp: '' })" class="text-xs bg-blue-50 text-blue-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-all">+ Add Position</button>
-                </div>
-                <div class="space-y-4">
-                  ${(d.experience || []).map((e, idx) => `
-                    <div class="p-4 border border-slate-100 bg-slate-50 rounded-xl space-y-3 relative group">
-                      <button onclick="removeItem('experience', ${idx})" class="absolute top-2 right-2 text-slate-400 hover:text-red-500 text-xs p-1">✕ Remove</button>
-                      <div class="grid grid-cols-2 gap-3">
-                        <input type="text" placeholder="Company Name" value="${e.company || ''}" oninput="updateArrayItem('experience', ${idx}, 'company', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                        <input type="text" placeholder="Job Title" value="${e.title || ''}" oninput="updateArrayItem('experience', ${idx}, 'title', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                        <input type="text" placeholder="From (e.g. Jan 2022)" value="${e.from || ''}" oninput="updateArrayItem('experience', ${idx}, 'from', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                        <input type="text" placeholder="To (e.g. Present)" value="${e.to || ''}" oninput="updateArrayItem('experience', ${idx}, 'to', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                      </div>
-                      <textarea rows="2" placeholder="Responsibilities & accomplishments..." oninput="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full p-2 border border-slate-200 rounded-lg text-sm bg-white">${e.resp || ''}</textarea>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-
-              <!-- Education -->
-              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <div class="flex justify-between items-center">
-                  <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">🎓 Education</h3>
-                  <button onclick="addItem('education', { id: Date.now(), college: '', degree: '', spec: '', from: '', to: '' })" class="text-xs bg-blue-50 text-blue-600 font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-all">+ Add Education</button>
-                </div>
-                <div class="space-y-4">
-                  ${(d.education || []).map((e, idx) => `
-                    <div class="p-4 border border-slate-100 bg-slate-50 rounded-xl space-y-3 relative">
-                      <button onclick="removeItem('education', ${idx})" class="absolute top-2 right-2 text-slate-400 hover:text-red-500 text-xs p-1">✕ Remove</button>
-                      <div class="grid grid-cols-2 gap-3">
-                        <input type="text" placeholder="Institution / College" value="${e.college || ''}" oninput="updateArrayItem('education', ${idx}, 'college', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                        <input type="text" placeholder="Degree (e.g. B.Tech)" value="${e.degree || ''}" oninput="updateArrayItem('education', ${idx}, 'degree', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                        <input type="text" placeholder="Specialization" value="${e.spec || ''}" oninput="updateArrayItem('education', ${idx}, 'spec', this.value)" class="p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                        <div class="flex gap-2">
-                          <input type="text" placeholder="From" value="${e.from || ''}" oninput="updateArrayItem('education', ${idx}, 'from', this.value)" class="w-1/2 p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                          <input type="text" placeholder="To" value="${e.to || ''}" oninput="updateArrayItem('education', ${idx}, 'to', this.value)" class="w-1/2 p-2 border border-slate-200 rounded-lg text-sm bg-white" />
-                        </div>
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-
-              <!-- Skills -->
-              <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h3 class="font-bold text-slate-800 text-lg flex items-center gap-2">🛠️ Skills & Certifications</h3>
-                <div class="space-y-3">
-                  <div>
-                    <label class="text-xs font-semibold text-slate-600 uppercase">Technical Skills (comma separated)</label>
-                    <input type="text" value="${(d.skills?.technical || []).join(', ')}" onchange="updData('skills.technical', this.value.split(',').map(s=>s.trim()).filter(Boolean))" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mt-1" />
-                  </div>
-                  <div>
-                    <label class="text-xs font-semibold text-slate-600 uppercase">Soft Skills (comma separated)</label>
-                    <input type="text" value="${(d.skills?.soft || []).join(', ')}" onchange="updData('skills.soft', this.value.split(',').map(s=>s.trim()).filter(Boolean))" class="w-full p-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none mt-1" />
-                  </div>
-                </div>
-              </div>
-
-            </div>
-
-            <!-- Right Column: Live Preview & Floating Action Bar (5 cols) -->
-            <div class="lg:col-span-5 space-y-4">
-              <div class="sticky top-20 space-y-4">
-                
-                <!-- Action Header -->
-                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-                  <div>
-                    <div class="text-xs font-semibold text-slate-400 uppercase">ATS Compatibility</div>
-                    <div class="text-xl font-black ${score >= 70 ? 'text-emerald-600' : 'text-amber-500'}">${score}%</div>
-                  </div>
-                  <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
-                    📄 Export / Download
-                  </button>
-                </div>
-
-                <!-- Template Selector Tabs -->
-                <div class="bg-slate-200 p-1 rounded-xl flex gap-1 text-xs font-medium">
-                  <button onclick="setState({ selectedTemplate: 'one-pager' })" class="flex-1 py-1.5 rounded-lg text-center ${state.selectedTemplate === 'one-pager' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">One-Pager</button>
-                  <button onclick="setState({ selectedTemplate: 'modern' })" class="flex-1 py-1.5 rounded-lg text-center ${state.selectedTemplate === 'modern' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">Modern</button>
-                  <button onclick="setState({ selectedTemplate: 'classic' })" class="flex-1 py-1.5 rounded-lg text-center ${state.selectedTemplate === 'classic' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">Classic</button>
-                  <button onclick="setState({ selectedTemplate: 'minimal' })" class="flex-1 py-1.5 rounded-lg text-center ${state.selectedTemplate === 'minimal' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}">Minimal</button>
-                </div>
-
-                <!-- Preview Container -->
-                <div id="cv-preview-card" class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm min-h-[600px] overflow-auto">
-                  ${renderCVContent()}
-                </div>
-
-              </div>
+          <div class="text-center py-16 max-w-3xl mx-auto space-y-6">
+            <span class="bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1 rounded-full border border-blue-100">✨ Zero fees · No signup · AI-powered</span>
+            <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
+              Create your CV in minutes — <span class="text-blue-600">100% free, always.</span>
+            </h1>
+            <p class="text-slate-600 text-lg">Upload your existing CV to auto-fill, or build from scratch with AI assistance.</p>
+            <div class="flex items-center justify-center gap-4 pt-4">
+              <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3.5 rounded-xl shadow-md transition-all">
+                ⚡ Build My CV — Free
+              </button>
+              <button onclick="setState({ page: 'upload' })" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-6 py-3.5 rounded-xl transition-all">
+                📄 Upload & Reformat CV
+              </button>
             </div>
           </div>
         `;
-      } else if (state.page === "preview") {
+      } else if (state.page === "upload") {
         app.innerHTML = `
-          <div class="max-w-4xl mx-auto space-y-6">
-            <div class="flex justify-between items-center no-print">
-              <h2 class="text-2xl font-bold text-slate-900">Final CV Preview</h2>
-              <button onclick="triggerDownload()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
-                🖨️ Print / Save as PDF
-              </button>
+          <div class="max-w-2xl mx-auto w-full space-y-6">
+            <div class="text-center space-y-2">
+              <h2 class="text-3xl font-bold text-slate-900">Upload Your CV</h2>
+              <p class="text-slate-500 text-sm">Upload your resume and AI will extract all your details automatically.</p>
             </div>
-            <div id="cv-preview-card" class="bg-white p-10 rounded-2xl border border-slate-200 shadow-md min-h-[800px]">
-              ${renderCVContent()}
+
+            <div id="dropZone" class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/50 rounded-2xl p-10 text-center transition-all cursor-pointer">
+              <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" class="hidden" onchange="handleFileUpload(this.files[0])"/>
+              <div onclick="document.getElementById('fileInput').click()" class="space-y-4">
+                <div class="w-16 h-16 bg-white rounded-full shadow-sm mx-auto flex items-center justify-center text-blue-600">☁️</div>
+                <div>
+                  <p class="font-semibold text-slate-700">Drag & drop your resume here</p>
+                  <p class="text-xs text-slate-400 mt-1">or click the button below to browse</p>
+                </div>
+                <div class="flex items-center justify-center gap-2 text-xs text-slate-500">
+                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">📄 PDF</span>
+                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">📝 Word (.docx)</span>
+                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">🖼️ JPG / PNG</span>
+                  <span class="bg-white border border-slate-200 px-2.5 py-1 rounded-md">☕ WEBP</span>
+                </div>
+                <button type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all">
+                  📁 Choose File
+                </button>
+              </div>
+            </div>
+
+            ${state.uploadMessage ? `
+              <p class="text-center text-sm font-medium ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-blue-600'}">
+                ${state.uploadMessage}
+              </p>
+            ` : ''}
+          </div>
+        `;
+      } else if (state.page === "builder") {
+        app.innerHTML = `
+          <div class="max-w-4xl mx-auto w-full bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div>
+                <h2 class="text-2xl font-bold text-slate-900">Resume Builder</h2>
+                <p class="text-xs text-slate-500">Fill in your information or review parsed details.</p>
+              </div>
+              <div class="bg-emerald-50 text-emerald-700 font-semibold text-sm px-3 py-1.5 rounded-xl border border-emerald-200">
+                ATS Score: ${atsScore(state.data)}%
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">First Name</label>
+                <input type="text" value="${state.data.personal?.firstName || ''}" onchange="updData('personal.firstName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Last Name</label>
+                <input type="text" value="${state.data.personal?.lastName || ''}" onchange="updData('personal.lastName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
+                <input type="email" value="${state.data.personal?.email || ''}" onchange="updData('personal.email', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Phone</label>
+                <input type="text" value="${state.data.personal?.phone || ''}" onchange="updData('personal.phone', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"/>
+              </div>
+              <div class="col-span-2">
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Professional Summary</label>
+                <textarea rows="3" onchange="updData('summary', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">${state.data.summary || ''}</textarea>
+              </div>
             </div>
           </div>
         `;
       }
     }
 
-    // Initial render call
+    // Initial Render
     render();
   </script>
 </body>
