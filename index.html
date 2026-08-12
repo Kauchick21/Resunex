@@ -14,11 +14,21 @@
   <!-- Mammoth.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 
+  <!-- Google Fonts for Template Styles -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Merriweather:wght@300;400;700&family=Montserrat:wght@400;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+
   <style>
+    .font-serif-classic { font-family: 'Merriweather', serif; }
+    .font-serif-executive { font-family: 'Playfair Display', serif; }
+    .font-mono-tech { font-family: 'Fira Code', monospace; }
+    .font-sans-modern { font-family: 'Montserrat', sans-serif; }
+
     @media print {
       body * { visibility: hidden; }
       #cv-preview-card, #cv-preview-card * { visibility: visible; }
-      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; }
+      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; border: none !important; shadow: none !important; }
       header, .no-print { display: none !important; }
     }
   </style>
@@ -56,6 +66,15 @@
     // ─── CONFIG ───────────────────────────────────────────────
     const API = "/api/claude";
     const MODEL = "gemini-2.5-flash";
+
+    const TEMPLATES = [
+      { id: "modern", name: "Modern Blue", desc: "Clean layout with crisp blue accents", tag: "Popular" },
+      { id: "classic", name: "Classic Elegant", desc: "Traditional serif typography with divided sections", tag: "Corporate" },
+      { id: "minimal", name: "Minimalist", desc: "Monochrome, ample whitespace, high scannability", tag: "Clean" },
+      { id: "tech", name: "Tech Developer", desc: "Developer-centric with code font accents", tag: "Engineering" },
+      { id: "executive", name: "Executive Suite", desc: "Sophisticated styling with dynamic header banner", tag: "Leadership" },
+      { id: "creative", name: "Creative Edge", desc: "Sidebar summary layout with colorful badges", tag: "Creative" }
+    ];
 
     // ─── API HELPERS ──────────────────────────────────────────
     async function callClaudeWithImage(base64, mimeType, prompt, system) {
@@ -228,6 +247,7 @@
     // ─── STATE MANAGEMENT ────────────────────────────────────────
     let state = {
       page: "landing",
+      selectedTemplate: "modern",
       data: blankData(),
       toast: null,
       uploadProgress: null,
@@ -344,6 +364,335 @@
         console.error("Upload error:", err);
         setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` });
       }
+    }
+
+    // ─── TEMPLATE RENDER ENGINES ─────────────────────────────────
+    function renderTemplateContent(d, templateId) {
+      const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Full Name";
+      const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+      const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+      const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+
+      // 1. MODERN BLUE TEMPLATE
+      if (templateId === "modern") {
+        return `
+          <div class="space-y-6 text-slate-800">
+            <div class="border-b-2 border-blue-600 pb-5">
+              <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">${fullName}</h1>
+              <div class="flex flex-wrap gap-4 text-xs font-medium text-slate-600 mt-2">
+                ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
+                ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
+              </div>
+            </div>
+            ${d.summary ? `
+              <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600 mb-1">Summary</h2>
+                <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
+              </div>` : ''}
+            ${d.experience?.length ? `
+              <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600 mb-3">Professional Experience</h2>
+                <div class="space-y-4">
+                  ${d.experience.map(e => `
+                    <div>
+                      <div class="flex justify-between items-baseline">
+                        <h3 class="font-bold text-slate-900 text-sm">${e.title || ''} ${e.company ? `— <span class="text-slate-700 font-medium">${e.company}</span>` : ''}</h3>
+                        <span class="text-xs text-slate-500 font-medium">${e.from || ''} ${e.to ? `- ${e.to}` : ''}</span>
+                      </div>
+                      ${e.resp ? `<p class="text-xs text-slate-600 mt-1 whitespace-pre-line leading-relaxed">${e.resp}</p>` : ''}
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+            ${d.education?.length ? `
+              <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600 mb-2">Education</h2>
+                <div class="space-y-2">
+                  ${d.education.map(ed => `
+                    <div class="flex justify-between">
+                      <div>
+                        <h3 class="font-bold text-slate-900 text-xs">${ed.college || ''}</h3>
+                        <p class="text-xs text-slate-600">${ed.degree || ''} ${ed.spec || ''}</p>
+                      </div>
+                      <span class="text-xs text-slate-500">${ed.from || ''} - ${ed.to || ''}</span>
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+            ${d.projects?.length ? `
+              <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600 mb-2">Key Projects</h2>
+                <div class="space-y-2">
+                  ${d.projects.map(p => `
+                    <div>
+                      <div class="flex justify-between">
+                        <span class="font-bold text-xs text-slate-900">${p.name || ''}</span>
+                        <span class="text-xs text-slate-500 italic">${p.tech || ''}</span>
+                      </div>
+                      <p class="text-xs text-slate-600 mt-0.5">${p.desc || ''}</p>
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+            ${(techSkills.length || softSkills.length || certs.length) ? `
+              <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600 mb-2">Skills & Certifications</h2>
+                <div class="text-xs space-y-1 text-slate-700">
+                  ${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}
+                  ${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}
+                  ${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}
+                </div>
+              </div>` : ''}
+          </div>
+        `;
+      }
+
+      // 2. CLASSIC ELEGANT TEMPLATE
+      if (templateId === "classic") {
+        return `
+          <div class="font-serif-classic space-y-5 text-slate-900">
+            <div class="text-center border-b pb-4 border-slate-300">
+              <h1 class="text-3xl font-bold uppercase tracking-wider">${fullName}</h1>
+              <p class="text-xs text-slate-600 mt-2">
+                ${[d.personal?.email, d.personal?.phone, d.personal?.linkedin, d.personal?.github].filter(Boolean).join(' | ')}
+              </p>
+            </div>
+            ${d.summary ? `
+              <div>
+                <h2 class="text-xs font-bold uppercase border-b border-slate-400 pb-1 mb-2 tracking-widest text-slate-800">Executive Profile</h2>
+                <p class="text-xs leading-relaxed text-slate-700 italic">${d.summary}</p>
+              </div>` : ''}
+            ${d.experience?.length ? `
+              <div>
+                <h2 class="text-xs font-bold uppercase border-b border-slate-400 pb-1 mb-3 tracking-widest text-slate-800">Professional Experience</h2>
+                <div class="space-y-4">
+                  ${d.experience.map(e => `
+                    <div>
+                      <div class="flex justify-between font-bold text-xs">
+                        <span>${e.company || ''}</span>
+                        <span>${e.from || ''} - ${e.to || ''}</span>
+                      </div>
+                      <div class="italic text-xs text-slate-700 mb-1">${e.title || ''}</div>
+                      <p class="text-xs text-slate-600 whitespace-pre-line leading-relaxed">${e.resp || ''}</p>
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+            ${d.education?.length ? `
+              <div>
+                <h2 class="text-xs font-bold uppercase border-b border-slate-400 pb-1 mb-2 tracking-widest text-slate-800">Education</h2>
+                ${d.education.map(ed => `
+                  <div class="flex justify-between text-xs mb-1">
+                    <div><strong>${ed.college}</strong> — ${ed.degree || ''} ${ed.spec || ''}</div>
+                    <span>${ed.from || ''} - ${ed.to || ''}</span>
+                  </div>`).join('')}
+              </div>` : ''}
+            ${(techSkills.length || certs.length) ? `
+              <div>
+                <h2 class="text-xs font-bold uppercase border-b border-slate-400 pb-1 mb-2 tracking-widest text-slate-800">Competencies & Credentials</h2>
+                <p class="text-xs text-slate-700">${[...techSkills, ...certs].join(' • ')}</p>
+              </div>` : ''}
+          </div>
+        `;
+      }
+
+      // 3. MINIMALIST TEMPLATE
+      if (templateId === "minimal") {
+        return `
+          <div class="space-y-6 text-neutral-800 font-sans">
+            <div>
+              <h1 class="text-4xl font-light tracking-tight text-black">${fullName}</h1>
+              <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500 mt-2 border-b border-neutral-200 pb-4">
+                ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>${d.personal.linkedin}</span>` : ''}
+              </div>
+            </div>
+            ${d.summary ? `<p class="text-xs text-neutral-600 leading-relaxed">${d.summary}</p>` : ''}
+            ${d.experience?.length ? `
+              <div class="space-y-4">
+                <h2 class="text-xs font-semibold tracking-widest text-neutral-400 uppercase">Experience</h2>
+                ${d.experience.map(e => `
+                  <div class="space-y-1">
+                    <div class="flex justify-between text-xs">
+                      <span class="font-medium text-black">${e.title}</span>
+                      <span class="text-neutral-400">${e.from} – ${e.to}</span>
+                    </div>
+                    <div class="text-xs text-neutral-500">${e.company}</div>
+                    <p class="text-xs text-neutral-600 leading-relaxed whitespace-pre-line">${e.resp}</p>
+                  </div>`).join('')}
+              </div>` : ''}
+            ${d.education?.length ? `
+              <div class="space-y-2">
+                <h2 class="text-xs font-semibold tracking-widest text-neutral-400 uppercase">Education</h2>
+                ${d.education.map(ed => `
+                  <div class="flex justify-between text-xs">
+                    <span class="text-neutral-800">${ed.college} — ${ed.degree}</span>
+                    <span class="text-neutral-400">${ed.from} - ${ed.to}</span>
+                  </div>`).join('')}
+              </div>` : ''}
+            ${techSkills.length ? `
+              <div class="space-y-1">
+                <h2 class="text-xs font-semibold tracking-widest text-neutral-400 uppercase">Skills</h2>
+                <p class="text-xs text-neutral-600">${techSkills.join(' / ')}</p>
+              </div>` : ''}
+          </div>
+        `;
+      }
+
+      // 4. TECH / DEVELOPER TEMPLATE
+      if (templateId === "tech") {
+        return `
+          <div class="font-mono-tech space-y-5 text-slate-800 text-xs">
+            <div class="bg-slate-900 text-slate-100 p-5 rounded-xl space-y-2">
+              <div class="text-emerald-400 font-bold text-lg">&gt; ${fullName}</div>
+              <div class="text-slate-400 text-xs">
+                // ${[d.personal?.email, d.personal?.phone, d.personal?.github].filter(Boolean).join(' | ')}
+              </div>
+            </div>
+            ${d.summary ? `
+              <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <span class="text-emerald-600 font-bold">/* Summary */</span>
+                <p class="text-slate-700 mt-1">${d.summary}</p>
+              </div>` : ''}
+            ${techSkills.length ? `
+              <div>
+                <div class="text-emerald-600 font-bold border-b border-slate-200 pb-1 mb-2">&gt; tech_stack</div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${techSkills.map(s => `<span class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-semibold">${s}</span>`).join('')}
+                </div>
+              </div>` : ''}
+            ${d.experience?.length ? `
+              <div>
+                <div class="text-emerald-600 font-bold border-b border-slate-200 pb-1 mb-3">&gt; work_experience</div>
+                <div class="space-y-4">
+                  ${d.experience.map(e => `
+                    <div>
+                      <div class="flex justify-between font-bold text-slate-900">
+                        <span>[${e.company}] ${e.title}</span>
+                        <span class="text-slate-500">${e.from} :: ${e.to}</span>
+                      </div>
+                      <p class="text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${e.resp}</p>
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+            ${d.projects?.length ? `
+              <div>
+                <div class="text-emerald-600 font-bold border-b border-slate-200 pb-1 mb-2">&gt; repositories_and_projects</div>
+                ${d.projects.map(p => `
+                  <div class="mb-2">
+                    <span class="font-bold text-slate-900">${p.name}</span> <span class="text-slate-400">(${p.tech})</span>
+                    <p class="text-slate-600">${p.desc}</p>
+                  </div>`).join('')}
+              </div>` : ''}
+          </div>
+        `;
+      }
+
+      // 5. EXECUTIVE SUITE TEMPLATE
+      if (templateId === "executive") {
+        return `
+          <div class="font-serif-executive space-y-6 text-slate-900">
+            <div class="bg-slate-900 text-white p-6 -mx-10 -mt-10 mb-6">
+              <h1 class="text-3xl font-bold tracking-wide">{ ${fullName} }</h1>
+              <div class="flex flex-wrap gap-4 text-xs text-slate-300 mt-3 font-sans">
+                ${d.personal?.email ? `<span>✉ ${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>☎ ${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>💼 ${d.personal.linkedin}</span>` : ''}
+              </div>
+            </div>
+            ${d.summary ? `
+              <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-amber-700 border-b border-amber-200 pb-1 mb-2 font-sans">Executive Summary</h2>
+                <p class="text-xs text-slate-700 leading-relaxed font-sans">${d.summary}</p>
+              </div>` : ''}
+            ${d.experience?.length ? `
+              <div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-amber-700 border-b border-amber-200 pb-1 mb-3 font-sans">Leadership & Experience</h2>
+                <div class="space-y-4 font-sans">
+                  ${d.experience.map(e => `
+                    <div>
+                      <div class="flex justify-between items-baseline">
+                        <h3 class="font-bold text-slate-900 text-xs">${e.title} — <span class="text-amber-800">${e.company}</span></h3>
+                        <span class="text-xs text-slate-500 font-medium">${e.from} - ${e.to}</span>
+                      </div>
+                      <p class="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${e.resp}</p>
+                    </div>`).join('')}
+                </div>
+              </div>` : ''}
+            ${d.education?.length ? `
+              <div class="font-sans">
+                <h2 class="text-sm font-bold uppercase tracking-wider text-amber-700 border-b border-amber-200 pb-1 mb-2">Education</h2>
+                ${d.education.map(ed => `
+                  <div class="flex justify-between text-xs mb-1">
+                    <span class="font-bold text-slate-800">${ed.college} — ${ed.degree}</span>
+                    <span class="text-slate-500">${ed.from} - ${ed.to}</span>
+                  </div>`).join('')}
+              </div>` : ''}
+          </div>
+        `;
+      }
+
+      // 6. CREATIVE EDGE TEMPLATE
+      if (templateId === "creative") {
+        return `
+          <div class="grid grid-cols-3 gap-6 text-slate-800 font-sans">
+            <!-- Sidebar -->
+            <div class="col-span-1 bg-indigo-50 p-4 rounded-xl space-y-5 -my-4 -ml-4">
+              <div>
+                <h1 class="text-xl font-black text-indigo-900 leading-tight">${fullName}</h1>
+              </div>
+              <div class="space-y-2 text-[11px] text-indigo-900">
+                ${d.personal?.email ? `<div class="break-all">📧 ${d.personal.email}</div>` : ''}
+                ${d.personal?.phone ? `<div>📞 ${d.personal.phone}</div>` : ''}
+                ${d.personal?.linkedin ? `<div class="break-all">🔗 ${d.personal.linkedin}</div>` : ''}
+              </div>
+              ${techSkills.length ? `
+                <div>
+                  <h3 class="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-2">Skills</h3>
+                  <div class="flex flex-wrap gap-1">
+                    ${techSkills.map(s => `<span class="bg-indigo-200 text-indigo-800 px-2 py-0.5 rounded text-[10px] font-semibold">${s}</span>`).join('')}
+                  </div>
+                </div>` : ''}
+              ${certs.length ? `
+                <div>
+                  <h3 class="text-xs font-bold text-indigo-900 uppercase tracking-wider mb-1">Certifications</h3>
+                  <p class="text-[11px] text-indigo-800">${certs.join(', ')}</p>
+                </div>` : ''}
+            </div>
+
+            <!-- Main Body -->
+            <div class="col-span-2 space-y-5">
+              ${d.summary ? `
+                <div>
+                  <h2 class="text-xs font-extrabold uppercase text-indigo-600 tracking-wider mb-1">About Me</h2>
+                  <p class="text-xs text-slate-600 leading-relaxed">${d.summary}</p>
+                </div>` : ''}
+              ${d.experience?.length ? `
+                <div>
+                  <h2 class="text-xs font-extrabold uppercase text-indigo-600 tracking-wider mb-3">Work History</h2>
+                  <div class="space-y-4">
+                    ${d.experience.map(e => `
+                      <div class="border-l-2 border-indigo-200 pl-3 space-y-0.5">
+                        <div class="font-bold text-xs text-slate-900">${e.title}</div>
+                        <div class="text-[11px] text-indigo-600 font-medium">${e.company} | ${e.from} - ${e.to}</div>
+                        <p class="text-xs text-slate-600 mt-1 whitespace-pre-line leading-relaxed">${e.resp}</p>
+                      </div>`).join('')}
+                  </div>
+                </div>` : ''}
+              ${d.projects?.length ? `
+                <div>
+                  <h2 class="text-xs font-extrabold uppercase text-indigo-600 tracking-wider mb-2">Featured Projects</h2>
+                  ${d.projects.map(p => `
+                    <div class="mb-2 text-xs">
+                      <span class="font-bold text-slate-800">${p.name}</span>
+                      <p class="text-slate-600 text-[11px]">${p.desc}</p>
+                    </div>`).join('')}
+                </div>` : ''}
+            </div>
+          </div>
+        `;
+      }
+
+      return "";
     }
 
     // ─── RENDER ENGINE ──────────────────────────────────────────
@@ -592,7 +941,7 @@
             <!-- Submit Action Bar -->
             <div class="flex justify-end pt-4">
               <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-base px-8 py-4 rounded-xl shadow-lg transition-all flex items-center gap-2">
-                ⚡ Generate & Preview CV →
+                ⚡ Choose Template & Preview CV →
               </button>
             </div>
 
@@ -600,113 +949,59 @@
         `;
       } else if (state.page === "preview") {
         const d = state.data;
-        const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
-        const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
-        const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
-        const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
 
         app.innerHTML = `
-          <div class="max-w-4xl mx-auto w-full space-y-6">
+          <div class="max-w-6xl mx-auto w-full space-y-6">
+            
             <!-- Top Controls -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between no-print">
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 no-print">
               <button onclick="setState({ page: 'builder' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl">
                 ← Edit Details
               </button>
-              <div class="flex gap-3">
-                <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-6 py-2 rounded-xl shadow-sm transition-all">
-                  🖨️ Print / Save as PDF
+              <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+                <button onclick="window.print()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-6 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
+                  📥 Download PDF
                 </button>
               </div>
             </div>
 
-            <!-- Resume Render Card -->
-            <div id="cv-preview-card" class="bg-white border border-slate-200 shadow-md rounded-2xl p-10 space-y-6 text-slate-800">
-              <!-- Header -->
-              <div class="border-b border-slate-200 pb-6 text-center">
-                <h1 class="text-3xl font-extrabold text-slate-900">${fullName}</h1>
-                <div class="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-2">
-                  ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
-                  ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
-                  ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
-                  ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+              
+              <!-- Template Picker Sidebar -->
+              <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 no-print col-span-1">
+                <h3 class="font-bold text-slate-900 border-b pb-2 text-base">🎨 Choose Template</h3>
+                <div class="space-y-3">
+                  ${TEMPLATES.map(t => `
+                    <div 
+                      onclick="setState({ selectedTemplate: '${t.id}' })" 
+                      class="p-3.5 rounded-xl border-2 transition-all cursor-pointer flex justify-between items-center ${
+                        state.selectedTemplate === t.id 
+                          ? 'border-blue-600 bg-blue-50/50 shadow-sm' 
+                          : 'border-slate-100 hover:border-slate-300 bg-slate-50/30'
+                      }"
+                    >
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <span class="font-bold text-sm ${state.selectedTemplate === t.id ? 'text-blue-700' : 'text-slate-800'}">${t.name}</span>
+                          <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${state.selectedTemplate === t.id ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}">${t.tag}</span>
+                        </div>
+                        <p class="text-xs text-slate-500 mt-0.5">${t.desc}</p>
+                      </div>
+                      ${state.selectedTemplate === t.id ? '<span class="text-blue-600 font-bold">✓</span>' : ''}
+                    </div>
+                  `).join('')}
                 </div>
               </div>
 
-              <!-- Summary -->
-              ${d.summary ? `
-                <div class="space-y-2">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Professional Summary</h2>
-                  <p class="text-sm text-slate-700 leading-relaxed">${d.summary}</p>
+              <!-- Live Resume Render Card -->
+              <div class="lg:col-span-2">
+                <div id="cv-preview-card" class="bg-white border border-slate-200 shadow-md rounded-2xl p-10 min-h-[900px] overflow-hidden">
+                  ${renderTemplateContent(d, state.selectedTemplate)}
                 </div>
-              ` : ''}
-
-              <!-- Experience -->
-              ${d.experience?.length ? `
-                <div class="space-y-4">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Work Experience</h2>
-                  <div class="space-y-4">
-                    ${d.experience.map(exp => `
-                      <div>
-                        <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-sm">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3>
-                          <span class="text-xs text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span>
-                        </div>
-                        ${exp.resp ? `<p class="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Education -->
-              ${d.education?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Education</h2>
-                  <div class="space-y-3">
-                    ${d.education.map(edu => `
-                      <div class="flex justify-between items-baseline">
-                        <div>
-                          <h3 class="font-bold text-slate-900 text-sm">${edu.college || 'University'}</h3>
-                          <p class="text-xs text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p>
-                        </div>
-                        <span class="text-xs text-slate-500">${edu.from || ''} - ${edu.to || ''}</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Key Projects -->
-              ${d.projects?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Projects</h2>
-                  <div class="space-y-3">
-                    ${d.projects.map(proj => `
-                      <div>
-                        <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-sm">${proj.name || 'Project'}</h3>
-                          ${proj.tech ? `<span class="text-xs text-slate-500 italic">${proj.tech}</span>` : ''}
-                        </div>
-                        ${proj.desc ? `<p class="text-xs text-slate-600 mt-1">${proj.desc}</p>` : ''}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Skills & Certifications -->
-              ${(techSkills.length || softSkills.length || certs.length) ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Skills & Certifications</h2>
-                  <div class="space-y-1 text-xs text-slate-700">
-                    ${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}
-                    ${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}
-                    ${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}
-                  </div>
-                </div>
-              ` : ''}
+              </div>
 
             </div>
+
           </div>
         `;
       }
