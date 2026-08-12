@@ -4,76 +4,78 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Resunex — Create Your CV Free</title>
-  
-  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- PDF.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  
-  <!-- Mammoth.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
-
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
   <style>
-    @media print {
-      body * { visibility: hidden; }
-      #cv-preview-card, #cv-preview-card * { visibility: visible; }
-      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; }
-      header, .no-print { display: none !important; }
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;600;700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+    * { box-sizing: border-box; }
+
+    .tpl-card {
+      cursor: pointer;
+      border: 2px solid #e2e8f0;
+      border-radius: 16px;
+      overflow: hidden;
+      transition: all 0.2s ease;
     }
+    .tpl-card:hover { border-color: #93c5fd; transform: translateY(-2px); box-shadow: 0 8px 24px rgba(37,99,235,0.1); }
+    .tpl-card.selected { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15); }
+
+    .dl-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      padding: 12px 24px;
+      border-radius: 12px;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+    .dl-btn-pdf { background: #ef4444; color: #fff; }
+    .dl-btn-pdf:hover { background: #dc2626; }
+    .dl-btn-word { background: #2563eb; color: #fff; }
+    .dl-btn-word:hover { background: #1d4ed8; }
+    .dl-btn-edit { background: #fff; color: #374151; border: 1px solid #d1d5db; }
+    .dl-btn-edit:hover { background: #f9fafb; }
+
+    @media print { body * { visibility: hidden; } }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col" style="font-family:'Inter',sans-serif">
 
-  <!-- Header -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
       <div class="flex items-center gap-4">
-        <button id="backBtn" onclick="handleBack()" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">
-          ← Back
-        </button>
+        <button id="backBtn" onclick="handleBack()" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">← Back</button>
         <span class="text-xl font-black tracking-tight text-blue-600">Resunex</span>
       </div>
       <div class="flex items-center gap-3">
         <button onclick="setState({ page: 'upload' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5">Upload CV</button>
-        <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-xl shadow-sm transition-all">
-          ⚡ Create CV
-        </button>
+        <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm px-4 py-2 rounded-xl shadow-sm transition-all">⚡ Create CV</button>
       </div>
     </div>
   </header>
 
-  <!-- Main Container -->
-  <main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
-    <!-- Dynamic Content Rendered Here -->
-  </main>
+  <main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 py-8 flex flex-col justify-center"></main>
+  <div id="toast" class="fixed bottom-6 right-6 hidden z-50"></div>
 
-  <!-- Toast Notification Container -->
-  <div id="toast" class="fixed bottom-6 right-6 hidden z-50 no-print"></div>
-
-  <!-- JavaScript Logic -->
   <script>
-    // ─── CONFIG ───────────────────────────────────────────────
     const API = "/api/claude";
     const MODEL = "gemini-2.5-flash";
 
-    // ─── API HELPERS ──────────────────────────────────────────
+    // ── API helpers ──────────────────────────────────────────
     async function callClaudeWithImage(base64, mimeType, prompt, system) {
       const res = await fetch(API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: MODEL,
-          max_tokens: 4000,
-          system,
-          messages: [{
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
-              { type: "text", text: prompt }
-            ]
-          }]
-        })
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 4000, system, messages: [{ role: "user", content: [
+          { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
+          { type: "text", text: prompt }
+        ]}]})
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
@@ -82,134 +84,72 @@
 
     async function callClaudeWithText(text, system) {
       const res = await fetch(API, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: MODEL,
-          max_tokens: 4000,
-          system,
-          messages: [{ role: "user", content: `Parse this resume content into structured JSON:\n\n${text}` }]
-        })
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 4000, system, messages: [{ role: "user", content: `Parse this resume content into structured JSON:\n\n${text}` }]})
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `API error ${res.status}`);
       return data.content?.[0]?.text || "";
     }
 
-    // ─── ROBUST JSON REPAIR & SANITIZATION ───────────────────
+    // ── Utils ────────────────────────────────────────────────
     function repairJsonString(rawStr) {
       if (!rawStr) return "{}";
       let str = rawStr.trim();
-      const startIdx = str.indexOf('{');
-      const endIdx = str.lastIndexOf('}');
-      if (startIdx !== -1 && endIdx !== -1) {
-        str = str.substring(startIdx, endIdx + 1);
-      }
-      str = str.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, (match) => {
-        return match
-          .replace(/\n/g, "\\n")
-          .replace(/\r/g, "\\r")
-          .replace(/\t/g, "\\t");
-      });
+      const s = str.indexOf('{'), e = str.lastIndexOf('}');
+      if (s !== -1 && e !== -1) str = str.substring(s, e + 1);
+      str = str.replace(/"([^"\\]*(\\.[^"\\]*)*)"/g, m => m.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t"));
       str = str.replace(/[\u0000-\u001F\u007F-\u009F]/g, " ");
       str = str.replace(/,\s*([}\]])/g, '$1');
       return str;
     }
 
-    function fileToBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    }
-
-    function fileToArrayBuffer(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(file);
-      });
-    }
+    const fileToBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result.split(",")[1]); r.onerror = rej; r.readAsDataURL(f); });
+    const fileToArrayBuffer = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsArrayBuffer(f); });
 
     async function extractDocxText(file) {
-      const arrayBuffer = await fileToArrayBuffer(file);
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      return result.value || "";
+      const ab = await fileToArrayBuffer(file);
+      const r = await mammoth.extractRawText({ arrayBuffer: ab });
+      return r.value || "";
     }
 
     async function pdfToBase64Image(file) {
-      if (typeof pdfjsLib === "undefined") {
-        throw new Error("PDF processing library failed to load.");
-      }
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-      const arrayBuffer = await fileToArrayBuffer(file);
-      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const totalPages = Math.min(pdfDoc.numPages, 3);
-      const canvases = [];
-      let totalHeight = 0, maxWidth = 0;
-
-      for (let i = 1; i <= totalPages; i++) {
-        const page = await pdfDoc.getPage(i);
-        const viewport = page.getViewport({ scale: 2.0 });
-        const canvas = document.createElement("canvas");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
-        canvases.push(canvas);
-        totalHeight += viewport.height;
-        maxWidth = Math.max(maxWidth, viewport.width);
+      const ab = await fileToArrayBuffer(file);
+      const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+      const total = Math.min(pdf.numPages, 3);
+      const canvases = []; let h = 0, w = 0;
+      for (let i = 1; i <= total; i++) {
+        const pg = await pdf.getPage(i); const vp = pg.getViewport({ scale: 2 });
+        const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+        await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+        canvases.push(c); h += vp.height; w = Math.max(w, vp.width);
       }
-
-      const merged = document.createElement("canvas");
-      merged.width = maxWidth;
-      merged.height = totalHeight;
-      const ctx = merged.getContext("2d");
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, maxWidth, totalHeight);
-
-      let y = 0;
-      for (const c of canvases) { 
-        ctx.drawImage(c, 0, y); 
-        y += c.height; 
-      }
-      return merged.toDataURL("image/jpeg", 0.92).split(",")[1];
+      const m = document.createElement("canvas"); m.width = w; m.height = h;
+      const ctx = m.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h);
+      let y = 0; for (const c of canvases) { ctx.drawImage(c, 0, y); y += c.height; }
+      return m.toDataURL("image/jpeg", 0.92).split(",")[1];
     }
 
     async function extractPdfText(file) {
-      if (typeof pdfjsLib === "undefined") {
-        throw new Error("PDF processing library failed to load.");
-      }
       pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-      const arrayBuffer = await fileToArrayBuffer(file);
-      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      const totalPages = Math.min(pdfDoc.numPages, 5);
-      let fullText = "";
-      for (let i = 1; i <= totalPages; i++) {
-        const page = await pdfDoc.getPage(i);
-        const content = await page.getTextContent();
-        fullText += content.items.map(item => item.str).join(" ") + "\n";
+      const ab = await fileToArrayBuffer(file);
+      const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+      const total = Math.min(pdf.numPages, 5); let txt = "";
+      for (let i = 1; i <= total; i++) {
+        const pg = await pdf.getPage(i); const c = await pg.getTextContent();
+        txt += c.items.map(x => x.str).join(" ") + "\n";
       }
-      return fullText.trim();
+      return txt.trim();
     }
 
     function atsScore(d) {
       let s = 0, t = 0;
       const a = (v, p) => { t += p; if (v) s += p; };
-      a(d.personal?.firstName && d.personal?.lastName, 5);
-      a(d.personal?.email, 5); 
-      a(d.personal?.phone, 5); 
-      a(d.personal?.linkedin, 3);
-      a(d.summary?.length > 80, 15);
-      a(d.experience?.some(e => e.company), 20);
-      a(d.experience?.some(e => e.resp?.length > 40), 10);
-      a(d.education?.some(e => e.college), 10);
-      a(d.skills?.technical?.length > 0, 10);
-      a(d.projects?.some(p => p.name), 7);
-      a(d.achievements?.awards || d.achievements?.hackathons, 5);
-      a(d.skills?.certifications?.length > 0, 5);
+      a(d.personal?.firstName && d.personal?.lastName, 5); a(d.personal?.email, 5); a(d.personal?.phone, 5); a(d.personal?.linkedin, 3);
+      a(d.summary?.length > 80, 15); a(d.experience?.some(e => e.company), 20); a(d.experience?.some(e => e.resp?.length > 40), 10);
+      a(d.education?.some(e => e.college), 10); a(d.skills?.technical?.length > 0, 10); a(d.projects?.some(p => p.name), 7);
+      a(d.achievements?.awards || d.achievements?.hackathons, 5); a(d.skills?.certifications?.length > 0, 5);
       return Math.round((s / t) * 100) || 0;
     }
 
@@ -225,199 +165,444 @@
       };
     }
 
-    // ─── STATE MANAGEMENT ────────────────────────────────────────
-    let state = {
-      page: "landing",
-      data: blankData(),
-      toast: null,
-      uploadProgress: null,
-      uploadMessage: ""
-    };
+    // ── State ────────────────────────────────────────────────
+    let state = { page: "landing", data: blankData(), toast: null, uploadProgress: null, uploadMessage: "", selectedTemplate: "executive" };
 
-    function setState(patch) { 
-      state = { ...state, ...patch }; 
-      render(); 
-    }
+    function setState(patch) { state = { ...state, ...patch }; render(); }
 
     function handleBack() {
-      if (state.page === "preview") setState({ page: "builder" });
+      if (state.page === "preview" || state.page === "templates") setState({ page: "builder" });
       else if (state.page === "builder" || state.page === "upload") setState({ page: "landing" });
     }
 
     function updData(path, val) {
-      const n = JSON.parse(JSON.stringify(state.data));
-      const keys = path.split(".");
+      const n = JSON.parse(JSON.stringify(state.data)); const keys = path.split(".");
       let cur = n;
-      for (let i = 0; i < keys.length - 1; i++) {
-        if (!cur[keys[i]]) cur[keys[i]] = {};
-        cur = cur[keys[i]];
-      }
-      cur[keys[keys.length - 1]] = val;
-      state.data = n; 
-      render();
+      for (let i = 0; i < keys.length - 1; i++) { if (!cur[keys[i]]) cur[keys[i]] = {}; cur = cur[keys[i]]; }
+      cur[keys[keys.length - 1]] = val; state.data = n; render();
     }
 
-    function addItem(section, itemSchema) {
-      const list = [...(state.data[section] || [])];
-      list.push({ ...itemSchema, id: Date.now() });
-      updData(section, list);
-    }
-
-    function removeItem(section, idx) {
-      const list = [...(state.data[section] || [])];
-      list.splice(idx, 1);
-      updData(section, list);
-    }
-
+    function addItem(section, schema) { const l = [...(state.data[section] || [])]; l.push({ ...schema, id: Date.now() }); updData(section, l); }
+    function removeItem(section, idx) { const l = [...(state.data[section] || [])]; l.splice(idx, 1); updData(section, l); }
     function updateArrayItem(section, idx, field, val) {
-      const list = JSON.parse(JSON.stringify(state.data[section] || []));
-      if (list[idx]) {
-        list[idx][field] = val;
-        updData(section, list);
-      }
+      const l = JSON.parse(JSON.stringify(state.data[section] || []));
+      if (l[idx]) { l[idx][field] = val; updData(section, l); }
     }
 
     let toastTimer = null;
     function showToast(msg, type = "ok") {
       if (toastTimer) clearTimeout(toastTimer);
-      state.toast = { msg, type }; 
-      render();
+      state.toast = { msg, type }; render();
       toastTimer = setTimeout(() => { state.toast = null; render(); }, 3500);
     }
 
-    // ─── FILE UPLOAD PROCESSOR ──────────────────────────────────
+    // ── File Upload ──────────────────────────────────────────
     async function handleFileUpload(file) {
       if (!file) return;
       setState({ uploadProgress: 20, uploadMessage: "Extracting file content..." });
-
       const systemPrompt = "Extract structured resume details into valid JSON matching the exact schema requested.";
-
       try {
-        let jsonStr = "";
-        const fileType = file.name.split('.').pop().toLowerCase();
-
-        if (fileType === "pdf") {
+        let jsonStr = ""; const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === "pdf") {
           setState({ uploadProgress: 40, uploadMessage: "Rendering PDF pages..." });
           try {
-            const rawText = await extractPdfText(file);
-            if (rawText && rawText.length > 100) {
-              setState({ uploadProgress: 60, uploadMessage: "Analyzing text structure..." });
-              jsonStr = await callClaudeWithText(rawText, systemPrompt);
-            } else {
-              throw new Error("Text layer empty, switching to OCR...");
-            }
-          } catch (e) {
+            const raw = await extractPdfText(file);
+            if (raw && raw.length > 100) { setState({ uploadProgress: 60, uploadMessage: "Analysing text..." }); jsonStr = await callClaudeWithText(raw, systemPrompt); }
+            else throw new Error("empty");
+          } catch {
             setState({ uploadProgress: 50, uploadMessage: "Processing scanned image..." });
-            const base64Img = await pdfToBase64Image(file);
-            setState({ uploadProgress: 75, uploadMessage: "AI visual extraction..." });
-            jsonStr = await callClaudeWithImage(base64Img, "image/jpeg", "Extract structured JSON from this resume image.", systemPrompt);
+            const img = await pdfToBase64Image(file); setState({ uploadProgress: 75, uploadMessage: "AI visual extraction..." });
+            jsonStr = await callClaudeWithImage(img, "image/jpeg", "Extract structured JSON from this resume image.", systemPrompt);
           }
-        } else if (fileType === "docx") {
+        } else if (ext === "docx") {
           setState({ uploadProgress: 50, uploadMessage: "Extracting Word document..." });
-          const text = await extractDocxText(file);
-          setState({ uploadProgress: 75, uploadMessage: "Parsing data with AI..." });
-          jsonStr = await callClaudeWithText(text, systemPrompt);
-        } else if (["jpg", "jpeg", "png", "webp"].includes(fileType)) {
+          const txt = await extractDocxText(file); setState({ uploadProgress: 75, uploadMessage: "Parsing with AI..." });
+          jsonStr = await callClaudeWithText(txt, systemPrompt);
+        } else if (["jpg", "jpeg", "png", "webp"].includes(ext)) {
           setState({ uploadProgress: 50, uploadMessage: "Encoding image..." });
-          const base64 = await fileToBase64(file);
-          const mime = file.type || `image/${fileType}`;
-          setState({ uploadProgress: 75, uploadMessage: "Parsing visual data..." });
-          jsonStr = await callClaudeWithImage(base64, mime, "Extract JSON from resume image.", systemPrompt);
-        } else {
-          throw new Error("Unsupported file format.");
-        }
-
+          const b64 = await fileToBase64(file); setState({ uploadProgress: 75, uploadMessage: "Parsing visual data..." });
+          jsonStr = await callClaudeWithImage(b64, file.type || `image/${ext}`, "Extract JSON from resume image.", systemPrompt);
+        } else { throw new Error("Unsupported file format."); }
         setState({ uploadProgress: 90, uploadMessage: "Structuring resume..." });
-
-        const cleanJsonStr = repairJsonString(jsonStr);
-        const parsed = JSON.parse(cleanJsonStr);
-
-        setState({
-          data: { ...blankData(), ...parsed },
-          page: "builder",
-          uploadProgress: null,
-          uploadMessage: ""
-        });
+        const parsed = JSON.parse(repairJsonString(jsonStr));
+        setState({ data: { ...blankData(), ...parsed }, page: "builder", uploadProgress: null, uploadMessage: "" });
         showToast("Resume parsed successfully!");
-
-      } catch (err) {
-        console.error("Upload error:", err);
-        setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` });
-      }
+      } catch (err) { console.error(err); setState({ uploadProgress: null, uploadMessage: `❌ ${err.message}` }); }
     }
 
-    // ─── RENDER ENGINE ──────────────────────────────────────────
+    // ── CV HTML Generators ───────────────────────────────────
+    function cvHTML_executive(d) {
+      const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
+      const tech = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+      const soft = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+      const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+      return `<div style="font-family:'Georgia',serif;background:#fff;color:#1a1a2e;min-height:100%">
+        <div style="background:#1a1a2e;color:#fff;padding:40px 48px 32px">
+          <h1 style="font-size:34px;font-weight:900;letter-spacing:-0.5px;margin:0 0 10px 0;font-family:'Georgia',serif">${fullName}</h1>
+          <div style="display:flex;flex-wrap:wrap;gap:16px;font-family:'Arial',sans-serif;font-size:12px;color:#94a3b8">
+            ${d.personal?.email ? `<span>✉ ${d.personal.email}</span>` : ''}
+            ${d.personal?.phone ? `<span>☎ ${d.personal.phone}</span>` : ''}
+            ${d.personal?.linkedin ? `<span>↗ ${d.personal.linkedin}</span>` : ''}
+            ${d.personal?.github ? `<span>⌥ ${d.personal.github}</span>` : ''}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 240px;min-height:800px">
+          <div style="padding:36px 40px;border-right:1px solid #e2e8f0">
+            ${d.summary ? `<div style="margin-bottom:28px">
+              <div style="font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#d4a017;border-bottom:2px solid #d4a017;padding-bottom:6px;margin-bottom:14px;font-family:'Arial',sans-serif">Professional Summary</div>
+              <p style="font-size:12.5px;color:#374151;line-height:1.7;margin:0;font-family:'Arial',sans-serif">${d.summary}</p>
+            </div>` : ''}
+            ${d.experience?.length ? `<div style="margin-bottom:28px">
+              <div style="font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#d4a017;border-bottom:2px solid #d4a017;padding-bottom:6px;margin-bottom:14px;font-family:'Arial',sans-serif">Work Experience</div>
+              <div style="display:flex;flex-direction:column;gap:20px">
+                ${d.experience.map(e => `<div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline">
+                    <div>
+                      <span style="font-size:14px;font-weight:700;color:#1a1a2e;font-family:'Georgia',serif">${e.title || ''}</span>
+                      ${e.company ? `<span style="font-size:13px;color:#64748b;font-style:italic;font-family:'Georgia',serif"> — ${e.company}</span>` : ''}
+                    </div>
+                    <span style="font-size:11px;color:#94a3b8;font-family:'Arial',sans-serif;white-space:nowrap;margin-left:12px">${e.from || ''}${e.to ? ` – ${e.to}` : ''}</span>
+                  </div>
+                  ${e.resp ? `<p style="font-size:12px;color:#374151;line-height:1.7;margin:6px 0 0;white-space:pre-line;font-family:'Arial',sans-serif">${e.resp}</p>` : ''}
+                </div>`).join('')}
+              </div>
+            </div>` : ''}
+            ${d.projects?.length ? `<div>
+              <div style="font-size:10px;font-weight:700;letter-spacing:2.5px;text-transform:uppercase;color:#d4a017;border-bottom:2px solid #d4a017;padding-bottom:6px;margin-bottom:14px;font-family:'Arial',sans-serif">Key Projects</div>
+              <div style="display:flex;flex-direction:column;gap:14px">
+                ${d.projects.map(p => `<div>
+                  <div style="display:flex;justify-content:space-between;align-items:baseline">
+                    <span style="font-size:13px;font-weight:700;color:#1a1a2e;font-family:'Georgia',serif">${p.name || ''}</span>
+                    ${p.tech ? `<span style="font-size:11px;color:#94a3b8;font-style:italic;font-family:'Arial',sans-serif">${p.tech}</span>` : ''}
+                  </div>
+                  ${p.desc ? `<p style="font-size:12px;color:#374151;line-height:1.65;margin:4px 0 0;font-family:'Arial',sans-serif">${p.desc}</p>` : ''}
+                </div>`).join('')}
+              </div>
+            </div>` : ''}
+          </div>
+          <div style="padding:36px 28px;background:#f8fafc">
+            ${d.education?.length ? `<div style="margin-bottom:28px">
+              <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1a1a2e;border-left:3px solid #d4a017;padding-left:8px;margin-bottom:14px;font-family:'Arial',sans-serif">Education</div>
+              ${d.education.map(e => `<div style="margin-bottom:14px">
+                <div style="font-size:13px;font-weight:700;color:#1a1a2e;font-family:'Georgia',serif">${e.college || ''}</div>
+                <div style="font-size:11px;color:#64748b;font-family:'Arial',sans-serif">${e.degree || ''} ${e.spec || ''}</div>
+                <div style="font-size:11px;color:#94a3b8;font-family:'Arial',sans-serif">${e.from || ''}${e.to ? ` – ${e.to}` : ''}</div>
+              </div>`).join('')}
+            </div>` : ''}
+            ${tech.length ? `<div style="margin-bottom:22px">
+              <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1a1a2e;border-left:3px solid #d4a017;padding-left:8px;margin-bottom:10px;font-family:'Arial',sans-serif">Technical Skills</div>
+              <div>${tech.map(s => `<span style="display:inline-block;background:#1a1a2e;color:#fff;font-family:'Arial',sans-serif;font-size:10.5px;font-weight:500;padding:3px 9px;border-radius:3px;margin:3px 3px 3px 0">${s}</span>`).join('')}</div>
+            </div>` : ''}
+            ${soft.length ? `<div style="margin-bottom:22px">
+              <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1a1a2e;border-left:3px solid #d4a017;padding-left:8px;margin-bottom:10px;font-family:'Arial',sans-serif">Soft Skills</div>
+              <div>${soft.map(s => `<span style="display:inline-block;background:#e2e8f0;color:#1a1a2e;font-family:'Arial',sans-serif;font-size:10.5px;padding:3px 9px;border-radius:3px;margin:3px 3px 3px 0">${s}</span>`).join('')}</div>
+            </div>` : ''}
+            ${certs.length ? `<div>
+              <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1a1a2e;border-left:3px solid #d4a017;padding-left:8px;margin-bottom:10px;font-family:'Arial',sans-serif">Certifications</div>
+              <ul style="list-style:none;padding:0;margin:0">${certs.map(c => `<li style="font-size:11.5px;color:#374151;font-family:'Arial',sans-serif;padding:3px 0;border-bottom:1px solid #e2e8f0">✓ ${c}</li>`).join('')}</ul>
+            </div>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }
+
+    function cvHTML_modern(d) {
+      const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
+      const tech = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+      const soft = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+      const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+      return `<div style="font-family:'Arial',sans-serif;background:#fff;color:#111827">
+        <div style="padding:44px 48px 32px;border-bottom:3px solid #2563eb;position:relative">
+          <div style="position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,#2563eb,#7c3aed)"></div>
+          <h1 style="font-size:36px;font-weight:900;letter-spacing:-1px;color:#111827;margin:0 0 8px 0">${fullName}</h1>
+          <div style="display:flex;flex-wrap:wrap;gap:20px;font-size:12px;color:#6b7280;font-weight:500">
+            ${d.personal?.email ? `<span>✉ ${d.personal.email}</span>` : ''}
+            ${d.personal?.phone ? `<span>☎ ${d.personal.phone}</span>` : ''}
+            ${d.personal?.linkedin ? `<span>↗ ${d.personal.linkedin}</span>` : ''}
+            ${d.personal?.github ? `<span>⌥ ${d.personal.github}</span>` : ''}
+          </div>
+        </div>
+        <div style="padding:36px 48px">
+          ${d.summary ? `<div style="margin-bottom:28px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2563eb;margin-bottom:12px">PROFESSIONAL SUMMARY</div>
+            <p style="font-size:13px;color:#4b5563;line-height:1.7;margin:0">${d.summary}</p>
+          </div>` : ''}
+          ${d.experience?.length ? `<div style="margin-bottom:28px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2563eb;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #e5e7eb">WORK EXPERIENCE</div>
+            <div style="display:flex;flex-direction:column;gap:20px">
+              ${d.experience.map(e => `<div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <div>
+                    <span style="font-size:14px;font-weight:700;color:#111827">${e.title || ''}</span>
+                    ${e.company ? `<span style="font-size:13px;color:#2563eb;font-weight:600"> · ${e.company}</span>` : ''}
+                  </div>
+                  <span style="font-size:11px;color:#9ca3af;font-weight:600;white-space:nowrap;margin-left:16px">${e.from || ''}${e.to ? ` – ${e.to}` : ''}</span>
+                </div>
+                ${e.resp ? `<p style="font-size:12px;color:#4b5563;line-height:1.65;margin:6px 0 0;white-space:pre-line">${e.resp}</p>` : ''}
+              </div>`).join('')}
+            </div>
+          </div>` : ''}
+          ${d.education?.length ? `<div style="margin-bottom:28px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2563eb;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #e5e7eb">EDUCATION</div>
+            ${d.education.map(e => `<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+              <div>
+                <div style="font-size:14px;font-weight:700;color:#111827">${e.college || ''}</div>
+                <div style="font-size:12px;color:#6b7280">${e.degree || ''} ${e.spec || ''}</div>
+              </div>
+              <span style="font-size:11px;color:#9ca3af;white-space:nowrap;margin-left:16px">${e.from || ''}${e.to ? ` – ${e.to}` : ''}</span>
+            </div>`).join('')}
+          </div>` : ''}
+          ${d.projects?.length ? `<div style="margin-bottom:28px">
+            <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2563eb;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #e5e7eb">PROJECTS</div>
+            ${d.projects.map(p => `<div style="margin-bottom:14px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:13px;font-weight:700;color:#111827">${p.name || ''}</span>
+                ${p.tech ? `<span style="font-size:11px;color:#9ca3af;font-style:italic">${p.tech}</span>` : ''}
+              </div>
+              ${p.desc ? `<p style="font-size:12px;color:#4b5563;line-height:1.6;margin:4px 0 0">${p.desc}</p>` : ''}
+            </div>`).join('')}
+          </div>` : ''}
+          ${(tech.length || soft.length || certs.length) ? `<div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2563eb;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid #e5e7eb">SKILLS & CERTIFICATIONS</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              ${tech.length ? `<div><div style="font-size:11px;font-weight:600;color:#374151;margin-bottom:8px">Technical</div><div>${tech.map(s => `<span style="display:inline-block;background:#eff6ff;color:#1d4ed8;font-size:11px;font-weight:600;padding:3px 12px;border-radius:999px;margin:3px 3px 3px 0;border:1px solid #bfdbfe">${s}</span>`).join('')}</div></div>` : ''}
+              ${soft.length ? `<div><div style="font-size:11px;font-weight:600;color:#374151;margin-bottom:8px">Soft Skills</div><div>${soft.map(s => `<span style="display:inline-block;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:600;padding:3px 12px;border-radius:999px;margin:3px 3px 3px 0;border:1px solid #bbf7d0">${s}</span>`).join('')}</div></div>` : ''}
+              ${certs.length ? `<div style="grid-column:1/-1"><div style="font-size:11px;font-weight:600;color:#374151;margin-bottom:8px">Certifications</div><div>${certs.map(c => `<span style="display:inline-block;background:#faf5ff;color:#7e22ce;font-size:11px;font-weight:600;padding:3px 12px;border-radius:999px;margin:3px 3px 3px 0;border:1px solid #e9d5ff">${c}</span>`).join('')}</div></div>` : ''}
+            </div>
+          </div>` : ''}
+        </div>
+      </div>`;
+    }
+
+    function cvHTML_minimal(d) {
+      const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
+      const tech = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+      const soft = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+      const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+      const contacts = [d.personal?.email, d.personal?.phone, d.personal?.linkedin, d.personal?.github].filter(Boolean);
+      return `<div style="font-family:'Arial',sans-serif;background:#fff;color:#18181b">
+        <div style="padding:40px 48px 28px">
+          <h1 style="font-size:30px;font-weight:700;letter-spacing:-0.5px;color:#18181b;margin:0 0 10px 0">${fullName}</h1>
+          <div style="display:flex;flex-wrap:wrap;gap:0;font-size:12px;color:#71717a">
+            ${contacts.map((c, i) => `<span>${c}${i < contacts.length - 1 ? ' · ' : ''}</span>`).join('')}
+          </div>
+        </div>
+        ${d.summary ? `<div style="display:grid;grid-template-columns:140px 1fr;gap:0 32px;padding:20px 48px;border-top:1px solid #f4f4f5">
+          <div style="font-size:10.5px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:1.5px;padding-top:2px">Summary</div>
+          <p style="font-size:12.5px;color:#52525b;line-height:1.7;margin:0">${d.summary}</p>
+        </div>` : ''}
+        ${d.experience?.length ? `<div style="display:grid;grid-template-columns:140px 1fr;gap:0 32px;padding:20px 48px;border-top:1px solid #f4f4f5">
+          <div style="font-size:10.5px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:1.5px;padding-top:2px">Experience</div>
+          <div style="display:flex;flex-direction:column;gap:20px">
+            ${d.experience.map(e => `<div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <div>
+                  <span style="font-size:14px;font-weight:600;color:#18181b">${e.title || ''}</span>
+                  ${e.company ? `<span style="font-size:13px;color:#52525b"> · ${e.company}</span>` : ''}
+                </div>
+                <span style="font-size:11px;color:#a1a1aa;white-space:nowrap;margin-left:16px">${e.from || ''}${e.to ? ` – ${e.to}` : ''}</span>
+              </div>
+              ${e.resp ? `<p style="font-size:12px;color:#52525b;line-height:1.7;margin:6px 0 0;white-space:pre-line">${e.resp}</p>` : ''}
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
+        ${d.education?.length ? `<div style="display:grid;grid-template-columns:140px 1fr;gap:0 32px;padding:20px 48px;border-top:1px solid #f4f4f5">
+          <div style="font-size:10.5px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:1.5px;padding-top:2px">Education</div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            ${d.education.map(e => `<div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <div>
+                  <span style="font-size:14px;font-weight:600;color:#18181b">${e.college || ''}</span>
+                  <div style="font-size:12px;color:#71717a">${e.degree || ''} ${e.spec || ''}</div>
+                </div>
+                <span style="font-size:11px;color:#a1a1aa;white-space:nowrap;margin-left:16px">${e.from || ''}${e.to ? ` – ${e.to}` : ''}</span>
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
+        ${d.projects?.length ? `<div style="display:grid;grid-template-columns:140px 1fr;gap:0 32px;padding:20px 48px;border-top:1px solid #f4f4f5">
+          <div style="font-size:10.5px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:1.5px;padding-top:2px">Projects</div>
+          <div style="display:flex;flex-direction:column;gap:14px">
+            ${d.projects.map(p => `<div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:13px;font-weight:600;color:#18181b">${p.name || ''}</span>
+                ${p.tech ? `<span style="font-size:11px;color:#a1a1aa;font-style:italic">${p.tech}</span>` : ''}
+              </div>
+              ${p.desc ? `<p style="font-size:12px;color:#52525b;line-height:1.65;margin:4px 0 0">${p.desc}</p>` : ''}
+            </div>`).join('')}
+          </div>
+        </div>` : ''}
+        ${(tech.length || soft.length || certs.length) ? `<div style="display:grid;grid-template-columns:140px 1fr;gap:0 32px;padding:20px 48px;border-top:1px solid #f4f4f5">
+          <div style="font-size:10.5px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:1.5px;padding-top:2px">Skills</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${tech.length ? `<div><span style="font-size:11px;font-weight:600;color:#3f3f46">Technical: </span><span style="font-size:12px;color:#52525b">${tech.join(' · ')}</span></div>` : ''}
+            ${soft.length ? `<div><span style="font-size:11px;font-weight:600;color:#3f3f46">Soft Skills: </span><span style="font-size:12px;color:#52525b">${soft.join(' · ')}</span></div>` : ''}
+            ${certs.length ? `<div><span style="font-size:11px;font-weight:600;color:#3f3f46">Certifications: </span><span style="font-size:12px;color:#52525b">${certs.join(' · ')}</span></div>` : ''}
+          </div>
+        </div>` : ''}
+      </div>`;
+    }
+
+    function getCVHTML(tpl, d) {
+      if (tpl === 'executive') return cvHTML_executive(d);
+      if (tpl === 'modern') return cvHTML_modern(d);
+      return cvHTML_minimal(d);
+    }
+
+    // ── Download handlers ────────────────────────────────────
+    async function downloadPDF() {
+      const el = document.getElementById('cv-render');
+      if (!el) return;
+      const fullName = `${state.data.personal?.firstName || ''} ${state.data.personal?.lastName || ''}`.trim() || 'resume';
+      const btn = document.getElementById('btn-pdf');
+      btn.textContent = '⏳ Generating…'; btn.disabled = true;
+      try {
+        await html2pdf().set({
+          margin: 0,
+          filename: `${fullName.replace(/\s+/g, '_')}_CV.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(el).save();
+      } finally { btn.innerHTML = '⬇ Save as PDF'; btn.disabled = false; }
+    }
+
+    async function downloadWord() {
+      const d = state.data;
+      const { Document, Packer, Paragraph, TextRun, BorderStyle } = docx;
+      const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || 'Your Name';
+      const tech = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+      const soft = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+      const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+
+      const sectionHeading = (text) => new Paragraph({
+        children: [new TextRun({ text: text.toUpperCase(), bold: true, size: 20, color: '2563eb', font: 'Arial' })],
+        spacing: { before: 280, after: 80 },
+        border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: '2563eb', space: 4 } }
+      });
+      const label = (t) => new TextRun({ text: t, bold: true, size: 22, font: 'Arial', color: '111827' });
+      const body = (t) => new TextRun({ text: t || '', size: 22, font: 'Arial', color: '374151' });
+      const small = (t) => new TextRun({ text: t || '', size: 19, font: 'Arial', color: '9ca3af' });
+
+      const children = [
+        new Paragraph({
+          alignment: 'center', spacing: { after: 60 },
+          children: [new TextRun({ text: fullName, bold: true, size: 52, font: 'Arial', color: '111827' })]
+        }),
+        new Paragraph({
+          alignment: 'center', spacing: { after: 200 },
+          children: [
+            ...[d.personal?.email, d.personal?.phone, d.personal?.linkedin, d.personal?.github]
+              .filter(Boolean)
+              .flatMap((c, i, arr) => [
+                new TextRun({ text: c, size: 19, font: 'Arial', color: '6b7280' }),
+                i < arr.length - 1 ? new TextRun({ text: '  ·  ', size: 19, font: 'Arial', color: '9ca3af' }) : null
+              ]).filter(Boolean)
+          ]
+        }),
+      ];
+
+      if (d.summary) {
+        children.push(sectionHeading('Professional Summary'));
+        children.push(new Paragraph({ children: [body(d.summary)], spacing: { before: 80, after: 160 } }));
+      }
+
+      if (d.experience?.length) {
+        children.push(sectionHeading('Work Experience'));
+        d.experience.forEach(e => {
+          children.push(new Paragraph({
+            children: [label(e.title || ''), ...(e.company ? [new TextRun({ text: ` · ${e.company}`, size: 22, font: 'Arial', color: '2563eb', bold: true })] : [])],
+            spacing: { before: 120, after: 20 }
+          }));
+          if (e.from || e.to) children.push(new Paragraph({ children: [small(`${e.from || ''}${e.to ? ' – ' + e.to : ''}`)], spacing: { after: 40 } }));
+          if (e.resp) children.push(new Paragraph({ children: [body(e.resp)], spacing: { after: 120 } }));
+        });
+      }
+
+      if (d.education?.length) {
+        children.push(sectionHeading('Education'));
+        d.education.forEach(e => {
+          children.push(new Paragraph({ children: [label(e.college || '')], spacing: { before: 120, after: 20 } }));
+          children.push(new Paragraph({ children: [body(`${e.degree || ''} ${e.spec || ''}`), small(` · ${e.from || ''}${e.to ? ' – ' + e.to : ''}`)], spacing: { after: 120 } }));
+        });
+      }
+
+      if (d.projects?.length) {
+        children.push(sectionHeading('Projects'));
+        d.projects.forEach(p => {
+          children.push(new Paragraph({ children: [label(p.name || ''), ...(p.tech ? [small(` · ${p.tech}`)] : [])], spacing: { before: 120, after: 20 } }));
+          if (p.desc) children.push(new Paragraph({ children: [body(p.desc)], spacing: { after: 120 } }));
+        });
+      }
+
+      if (tech.length || soft.length || certs.length) {
+        children.push(sectionHeading('Skills & Certifications'));
+        if (tech.length) children.push(new Paragraph({ children: [new TextRun({ text: 'Technical: ', bold: true, size: 22, font: 'Arial' }), body(tech.join(', '))], spacing: { before: 80, after: 60 } }));
+        if (soft.length) children.push(new Paragraph({ children: [new TextRun({ text: 'Soft Skills: ', bold: true, size: 22, font: 'Arial' }), body(soft.join(', '))], spacing: { after: 60 } }));
+        if (certs.length) children.push(new Paragraph({ children: [new TextRun({ text: 'Certifications: ', bold: true, size: 22, font: 'Arial' }), body(certs.join(', '))], spacing: { after: 60 } }));
+      }
+
+      const doc = new Document({ sections: [{ properties: { page: { margin: { top: 720, right: 720, bottom: 720, left: 720 } } }, children }] });
+      const btn = document.getElementById('btn-word');
+      btn.textContent = '⏳ Generating…'; btn.disabled = true;
+      try {
+        const blob = await Packer.toBlob(doc);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `${fullName.replace(/\s+/g, '_')}_CV.docx`; a.click();
+        URL.revokeObjectURL(url);
+      } finally { btn.innerHTML = '⬇ Save as Word'; btn.disabled = false; }
+    }
+
+    // ── Render ───────────────────────────────────────────────
     function render() {
       const app = document.getElementById("app");
       const backBtn = document.getElementById("backBtn");
-      
       backBtn.classList.toggle("hidden", state.page === "landing");
 
-      // Toast UI
       const toastEl = document.getElementById("toast");
       if (state.toast) {
-        toastEl.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm flex items-center gap-2 ${
-          state.toast.type === "ok" ? "bg-emerald-600" : "bg-red-600"
-        }`;
-        toastEl.innerHTML = state.toast.msg;
-        toastEl.classList.remove("hidden");
-      } else {
-        toastEl.classList.add("hidden");
-      }
+        toastEl.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm ${state.toast.type === "ok" ? "bg-emerald-600" : "bg-red-600"}`;
+        toastEl.innerHTML = state.toast.msg; toastEl.classList.remove("hidden");
+      } else { toastEl.classList.add("hidden"); }
 
-      // Page Router
       if (state.page === "landing") {
         app.innerHTML = `
           <div class="text-center py-16 max-w-3xl mx-auto space-y-6">
             <span class="bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1 rounded-full border border-blue-100">✨ Zero fees · No signup · AI-powered</span>
-            <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
-              Create your CV in minutes — <span class="text-blue-600">100% free, always.</span>
-            </h1>
-            <p class="text-slate-600 text-lg">Upload your existing CV to auto-fill, or build from scratch with AI assistance.</p>
+            <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">Create your CV in minutes — <span class="text-blue-600">100% free, always.</span></h1>
+            <p class="text-slate-600 text-lg">Upload your existing CV to auto-fill, or build from scratch. Choose from beautiful templates and download instantly.</p>
             <div class="flex items-center justify-center gap-4 pt-4">
-              <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3.5 rounded-xl shadow-md transition-all">
-                ⚡ Build My CV — Free
-              </button>
-              <button onclick="setState({ page: 'upload' })" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-6 py-3.5 rounded-xl transition-all">
-                📄 Upload & Reformat CV
-              </button>
+              <button onclick="setState({page:'builder'})" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3.5 rounded-xl shadow-md transition-all">⚡ Build My CV — Free</button>
+              <button onclick="setState({page:'upload'})" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-6 py-3.5 rounded-xl transition-all">📄 Upload & Reformat CV</button>
             </div>
-          </div>
-        `;
+            <div class="flex items-center justify-center gap-8 pt-6">
+              <div class="text-center"><div class="text-2xl">🎨</div><div class="text-xs text-slate-500 mt-1">3 Templates</div></div>
+              <div class="text-center"><div class="text-2xl">📥</div><div class="text-xs text-slate-500 mt-1">PDF & Word</div></div>
+              <div class="text-center"><div class="text-2xl">🤖</div><div class="text-xs text-slate-500 mt-1">AI Parsing</div></div>
+            </div>
+          </div>`;
+
       } else if (state.page === "upload") {
         app.innerHTML = `
           <div class="max-w-2xl mx-auto w-full space-y-6">
             <div class="text-center space-y-2">
               <h2 class="text-3xl font-bold text-slate-900">Upload Your CV</h2>
-              <p class="text-slate-500 text-sm">Upload your resume and AI will extract all your details automatically.</p>
+              <p class="text-slate-500 text-sm">AI will extract all your details automatically.</p>
             </div>
-
-            <div id="dropZone" class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/50 rounded-2xl p-10 text-center transition-all cursor-pointer">
+            <div class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/50 rounded-2xl p-10 text-center transition-all cursor-pointer">
               <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" class="hidden" onchange="handleFileUpload(this.files[0])"/>
               <div onclick="document.getElementById('fileInput').click()" class="space-y-4">
-                <div class="w-16 h-16 bg-white rounded-full shadow-sm mx-auto flex items-center justify-center text-blue-600">☁️</div>
-                <div>
-                  <p class="font-semibold text-slate-700">Drag & drop your resume here</p>
-                  <p class="text-xs text-slate-400 mt-1">or click below to browse</p>
-                </div>
-                <button type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all">
-                  📁 Choose File
-                </button>
+                <div class="w-16 h-16 bg-white rounded-full shadow-sm mx-auto flex items-center justify-center text-3xl">☁️</div>
+                <div><p class="font-semibold text-slate-700">Drag & drop your resume here</p><p class="text-xs text-slate-400 mt-1">PDF, DOCX, PNG, JPG — up to 10 MB</p></div>
+                <button type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all">📁 Choose File</button>
               </div>
             </div>
+            ${state.uploadMessage ? `<p class="text-center text-sm font-medium ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-blue-600'}">${state.uploadMessage}</p>` : ''}
+          </div>`;
 
-            ${state.uploadMessage ? `
-              <p class="text-center text-sm font-medium ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-blue-600'}">
-                ${state.uploadMessage}
-              </p>
-            ` : ''}
-          </div>
-        `;
       } else if (state.page === "builder") {
         const d = state.data;
-        const expList = d.experience || [];
-        const eduList = d.education || [];
-        const projList = d.projects || [];
+        const expList = d.experience || []; const eduList = d.education || []; const projList = d.projects || [];
         const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical.join(", ") : (d.skills?.technical || "");
         const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft.join(", ") : (d.skills?.soft || "");
         const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications.join(", ") : (d.skills?.certifications || "");
@@ -425,294 +610,171 @@
         app.innerHTML = `
           <div class="max-w-4xl mx-auto w-full space-y-8">
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
-              <div>
-                <h2 class="text-2xl font-bold text-slate-900">Resume Builder</h2>
-                <p class="text-xs text-slate-500">Review and edit your parsed resume details.</p>
-              </div>
-              <div class="bg-emerald-50 text-emerald-700 font-semibold text-sm px-4 py-2 rounded-xl border border-emerald-200">
-                ATS Score: ${atsScore(d)}%
-              </div>
+              <div><h2 class="text-2xl font-bold text-slate-900">Resume Builder</h2><p class="text-xs text-slate-500">Fill in your details, then pick a template to download.</p></div>
+              <div class="bg-emerald-50 text-emerald-700 font-semibold text-sm px-4 py-2 rounded-xl border border-emerald-200">ATS Score: ${atsScore(d)}%</div>
             </div>
 
-            <!-- Personal Info -->
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
               <h3 class="text-lg font-bold text-slate-800 border-b pb-2">👤 Personal Details</h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">First Name</label>
-                  <input type="text" value="${d.personal?.firstName || ''}" onchange="updData('personal.firstName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Last Name</label>
-                  <input type="text" value="${d.personal?.lastName || ''}" onchange="updData('personal.lastName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
-                  <input type="email" value="${d.personal?.email || ''}" onchange="updData('personal.email', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Phone</label>
-                  <input type="text" value="${d.personal?.phone || ''}" onchange="updData('personal.phone', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">LinkedIn</label>
-                  <input type="text" value="${d.personal?.linkedin || ''}" onchange="updData('personal.linkedin', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">GitHub / Portfolio</label>
-                  <input type="text" value="${d.personal?.github || d.personal?.portfolio || ''}" onchange="updData('personal.github', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
+                ${[['firstName','First Name'],['lastName','Last Name'],['email','Email'],['phone','Phone'],['linkedin','LinkedIn'],['github','GitHub / Portfolio']].map(([f, label]) => `
+                  <div><label class="block text-xs font-semibold text-slate-600 mb-1">${label}</label>
+                  <input type="text" value="${(d.personal?.[f] || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" onchange="updData('personal.${f}',this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/></div>`).join('')}
               </div>
             </div>
 
-            <!-- Professional Summary -->
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
               <h3 class="text-lg font-bold text-slate-800 border-b pb-2">📝 Professional Summary</h3>
-              <textarea rows="4" onchange="updData('summary', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500">${d.summary || ''}</textarea>
+              <textarea rows="4" onchange="updData('summary',this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500">${d.summary || ''}</textarea>
             </div>
 
-            <!-- Experience -->
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
               <div class="flex items-center justify-between border-b pb-2">
                 <h3 class="text-lg font-bold text-slate-800">💼 Work Experience</h3>
-                <button onclick="addItem('experience', { company: '', title: '', from: '', to: '', resp: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Position</button>
+                <button onclick="addItem('experience',{company:'',title:'',from:'',to:'',resp:''})" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Position</button>
               </div>
               <div class="space-y-6">
                 ${expList.map((exp, idx) => `
                   <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('experience', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
+                    <button onclick="removeItem('experience',${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Company</label>
-                        <input type="text" value="${exp.company || ''}" onchange="updateArrayItem('experience', ${idx}, 'company', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Job Title</label>
-                        <input type="text" value="${exp.title || ''}" onchange="updateArrayItem('experience', ${idx}, 'title', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">From</label>
-                        <input type="text" value="${exp.from || ''}" onchange="updateArrayItem('experience', ${idx}, 'from', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">To</label>
-                        <input type="text" value="${exp.to || ''}" onchange="updateArrayItem('experience', ${idx}, 'to', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
+                      <div><label class="block text-xs font-medium text-slate-500">Company</label><input type="text" value="${(exp.company || '').replace(/"/g, '&quot;')}" onchange="updateArrayItem('experience',${idx},'company',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
+                      <div><label class="block text-xs font-medium text-slate-500">Job Title</label><input type="text" value="${(exp.title || '').replace(/"/g, '&quot;')}" onchange="updateArrayItem('experience',${idx},'title',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
+                      <div><label class="block text-xs font-medium text-slate-500">From</label><input type="text" value="${exp.from || ''}" onchange="updateArrayItem('experience',${idx},'from',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
+                      <div><label class="block text-xs font-medium text-slate-500">To</label><input type="text" value="${exp.to || ''}" onchange="updateArrayItem('experience',${idx},'to',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
                     </div>
-                    <div>
-                      <label class="block text-xs font-medium text-slate-500">Responsibilities</label>
-                      <textarea rows="3" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${exp.resp || ''}</textarea>
-                    </div>
-                  </div>
-                `).join('')}
+                    <div><label class="block text-xs font-medium text-slate-500">Responsibilities</label><textarea rows="3" onchange="updateArrayItem('experience',${idx},'resp',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${exp.resp || ''}</textarea></div>
+                  </div>`).join('')}
               </div>
             </div>
 
-            <!-- Education -->
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
               <div class="flex items-center justify-between border-b pb-2">
                 <h3 class="text-lg font-bold text-slate-800">🎓 Education</h3>
-                <button onclick="addItem('education', { college: '', degree: '', spec: '', from: '', to: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Education</button>
+                <button onclick="addItem('education',{college:'',degree:'',spec:'',from:'',to:''})" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Education</button>
               </div>
               <div class="space-y-6">
                 ${eduList.map((edu, idx) => `
                   <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('education', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
+                    <button onclick="removeItem('education',${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Institution / College</label>
-                        <input type="text" value="${edu.college || ''}" onchange="updateArrayItem('education', ${idx}, 'college', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Degree & Major</label>
-                        <input type="text" value="${edu.degree || ''} ${edu.spec || ''}" onchange="updateArrayItem('education', ${idx}, 'degree', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">From</label>
-                        <input type="text" value="${edu.from || ''}" onchange="updateArrayItem('education', ${idx}, 'from', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">To</label>
-                        <input type="text" value="${edu.to || ''}" onchange="updateArrayItem('education', ${idx}, 'to', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
+                      <div><label class="block text-xs font-medium text-slate-500">Institution</label><input type="text" value="${(edu.college || '').replace(/"/g, '&quot;')}" onchange="updateArrayItem('education',${idx},'college',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
+                      <div><label class="block text-xs font-medium text-slate-500">Degree & Major</label><input type="text" value="${((edu.degree || '') + ' ' + (edu.spec || '')).trim().replace(/"/g, '&quot;')}" onchange="updateArrayItem('education',${idx},'degree',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
+                      <div><label class="block text-xs font-medium text-slate-500">From</label><input type="text" value="${edu.from || ''}" onchange="updateArrayItem('education',${idx},'from',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
+                      <div><label class="block text-xs font-medium text-slate-500">To</label><input type="text" value="${edu.to || ''}" onchange="updateArrayItem('education',${idx},'to',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
                     </div>
-                  </div>
-                `).join('')}
+                  </div>`).join('')}
               </div>
             </div>
 
-            <!-- Key Projects -->
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
               <div class="flex items-center justify-between border-b pb-2">
                 <h3 class="text-lg font-bold text-slate-800">🚀 Key Projects</h3>
-                <button onclick="addItem('projects', { name: '', desc: '', tech: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Project</button>
+                <button onclick="addItem('projects',{name:'',desc:'',tech:''})" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Project</button>
               </div>
               <div class="space-y-6">
                 ${projList.map((proj, idx) => `
                   <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('projects', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
+                    <button onclick="removeItem('projects',${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Project Name</label>
-                        <input type="text" value="${proj.name || ''}" onchange="updateArrayItem('projects', ${idx}, 'name', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
-                      <div>
-                        <label class="block text-xs font-medium text-slate-500">Technologies Used</label>
-                        <input type="text" value="${proj.tech || ''}" onchange="updateArrayItem('projects', ${idx}, 'tech', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
-                      </div>
+                      <div><label class="block text-xs font-medium text-slate-500">Project Name</label><input type="text" value="${(proj.name || '').replace(/"/g, '&quot;')}" onchange="updateArrayItem('projects',${idx},'name',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
+                      <div><label class="block text-xs font-medium text-slate-500">Technologies</label><input type="text" value="${(proj.tech || '').replace(/"/g, '&quot;')}" onchange="updateArrayItem('projects',${idx},'tech',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/></div>
                     </div>
-                    <div>
-                      <label class="block text-xs font-medium text-slate-500">Description</label>
-                      <textarea rows="2" onchange="updateArrayItem('projects', ${idx}, 'desc', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${proj.desc || ''}</textarea>
-                    </div>
-                  </div>
-                `).join('')}
+                    <div><label class="block text-xs font-medium text-slate-500">Description</label><textarea rows="2" onchange="updateArrayItem('projects',${idx},'desc',this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${proj.desc || ''}</textarea></div>
+                  </div>`).join('')}
               </div>
             </div>
 
-            <!-- Skills & Certifications -->
             <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
               <h3 class="text-lg font-bold text-slate-800 border-b pb-2">⚡ Skills & Certifications</h3>
               <div class="grid grid-cols-1 gap-4">
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Technical Skills (comma-separated)</label>
-                  <input type="text" value="${techSkills}" onchange="updData('skills.technical', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Soft Skills (comma-separated)</label>
-                  <input type="text" value="${softSkills}" onchange="updData('skills.soft', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
-                <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Certifications (comma-separated)</label>
-                  <input type="text" value="${certs}" onchange="updData('skills.certifications', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
-                </div>
+                <div><label class="block text-xs font-semibold text-slate-600 mb-1">Technical Skills <span class="font-normal text-slate-400">(comma-separated)</span></label><input type="text" value="${techSkills.replace(/"/g, '&quot;')}" onchange="updData('skills.technical',this.value.split(',').map(s=>s.trim()).filter(Boolean))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/></div>
+                <div><label class="block text-xs font-semibold text-slate-600 mb-1">Soft Skills <span class="font-normal text-slate-400">(comma-separated)</span></label><input type="text" value="${softSkills.replace(/"/g, '&quot;')}" onchange="updData('skills.soft',this.value.split(',').map(s=>s.trim()).filter(Boolean))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/></div>
+                <div><label class="block text-xs font-semibold text-slate-600 mb-1">Certifications <span class="font-normal text-slate-400">(comma-separated)</span></label><input type="text" value="${certs.replace(/"/g, '&quot;')}" onchange="updData('skills.certifications',this.value.split(',').map(s=>s.trim()).filter(Boolean))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/></div>
               </div>
             </div>
 
-            <!-- Submit Action Bar -->
             <div class="flex justify-end pt-4">
-              <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-base px-8 py-4 rounded-xl shadow-lg transition-all flex items-center gap-2">
-                ⚡ Generate & Preview CV →
+              <button onclick="setState({page:'templates'})" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-base px-8 py-4 rounded-xl shadow-lg transition-all flex items-center gap-2">
+                🎨 Choose Template & Download →
               </button>
             </div>
+          </div>`;
 
-          </div>
-        `;
-      } else if (state.page === "preview") {
-        const d = state.data;
-        const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
-        const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
-        const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
-        const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
-
+      } else if (state.page === "templates") {
+        const templates = [
+          { id: 'executive', name: 'Executive', desc: 'Classic two-column with a dark header — commands authority.' },
+          { id: 'modern',    name: 'Modern',    desc: 'Bold gradient stripe, clean layout — tech-forward.' },
+          { id: 'minimal',   name: 'Minimal',   desc: 'Label-grid layout, pure whitespace — timeless restraint.' }
+        ];
         app.innerHTML = `
-          <div class="max-w-4xl mx-auto w-full space-y-6">
-            <!-- Top Controls -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between no-print">
-              <button onclick="setState({ page: 'builder' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl">
-                ← Edit Details
-              </button>
-              <div class="flex gap-3">
-                <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-6 py-2 rounded-xl shadow-sm transition-all">
-                  🖨️ Print / Save as PDF
-                </button>
+          <div class="max-w-5xl mx-auto w-full space-y-8">
+            <div class="text-center space-y-2">
+              <h2 class="text-3xl font-bold text-slate-900">Choose Your Template</h2>
+              <p class="text-slate-500">Select a look, preview it live, then download as PDF or Word.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+              ${templates.map(t => `
+                <div class="tpl-card ${state.selectedTemplate === t.id ? 'selected' : ''}" onclick="selectTemplate('${t.id}')">
+                  <div id="thumb-${t.id}" style="height:180px;background:#f8fafc;overflow:hidden;position:relative"></div>
+                  <div style="padding:14px 16px;background:#fff;border-top:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
+                    <div>
+                      <div style="font-weight:700;font-size:14px;color:#1e293b">${t.name}</div>
+                      <div style="font-size:11px;color:#64748b;margin-top:2px">${t.desc}</div>
+                    </div>
+                    ${state.selectedTemplate === t.id
+                      ? `<span style="background:#2563eb;color:#fff;font-size:11px;font-weight:600;padding:3px 10px;border-radius:999px">Selected</span>`
+                      : `<span style="font-size:11px;color:#94a3b8;font-weight:500">Select</span>`}
+                  </div>
+                </div>`).join('')}
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+                <span class="text-sm font-semibold text-slate-700">Live Preview — <span class="text-blue-600">${templates.find(t => t.id === state.selectedTemplate)?.name}</span> Template</span>
+                <span class="text-xs text-slate-400">Scroll to see full CV</span>
+              </div>
+              <div style="max-height:700px;overflow-y:auto;background:#e5e7eb;padding:24px">
+                <div id="cv-render" style="width:794px;min-height:1000px;margin:0 auto;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,0.12)">
+                  ${getCVHTML(state.selectedTemplate, state.data)}
+                </div>
               </div>
             </div>
 
-            <!-- Resume Render Card -->
-            <div id="cv-preview-card" class="bg-white border border-slate-200 shadow-md rounded-2xl p-10 space-y-6 text-slate-800">
-              <!-- Header -->
-              <div class="border-b border-slate-200 pb-6 text-center">
-                <h1 class="text-3xl font-extrabold text-slate-900">${fullName}</h1>
-                <div class="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-2">
-                  ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
-                  ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
-                  ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
-                  ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
-                </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div class="font-semibold text-slate-800">Ready to download</div>
+                <div class="text-xs text-slate-500 mt-0.5">Your CV will be saved directly — no printing needed</div>
               </div>
-
-              <!-- Summary -->
-              ${d.summary ? `
-                <div class="space-y-2">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Professional Summary</h2>
-                  <p class="text-sm text-slate-700 leading-relaxed">${d.summary}</p>
-                </div>
-              ` : ''}
-
-              <!-- Experience -->
-              ${d.experience?.length ? `
-                <div class="space-y-4">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Work Experience</h2>
-                  <div class="space-y-4">
-                    ${d.experience.map(exp => `
-                      <div>
-                        <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-sm">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3>
-                          <span class="text-xs text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span>
-                        </div>
-                        ${exp.resp ? `<p class="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Education -->
-              ${d.education?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Education</h2>
-                  <div class="space-y-3">
-                    ${d.education.map(edu => `
-                      <div class="flex justify-between items-baseline">
-                        <div>
-                          <h3 class="font-bold text-slate-900 text-sm">${edu.college || 'University'}</h3>
-                          <p class="text-xs text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p>
-                        </div>
-                        <span class="text-xs text-slate-500">${edu.from || ''} - ${edu.to || ''}</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Key Projects -->
-              ${d.projects?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Projects</h2>
-                  <div class="space-y-3">
-                    ${d.projects.map(proj => `
-                      <div>
-                        <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-sm">${proj.name || 'Project'}</h3>
-                          ${proj.tech ? `<span class="text-xs text-slate-500 italic">${proj.tech}</span>` : ''}
-                        </div>
-                        ${proj.desc ? `<p class="text-xs text-slate-600 mt-1">${proj.desc}</p>` : ''}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Skills & Certifications -->
-              ${(techSkills.length || softSkills.length || certs.length) ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Skills & Certifications</h2>
-                  <div class="space-y-1 text-xs text-slate-700">
-                    ${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}
-                    ${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}
-                    ${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}
-                  </div>
-                </div>
-              ` : ''}
-
+              <div class="flex items-center gap-3 flex-wrap">
+                <button onclick="setState({page:'builder'})" class="dl-btn dl-btn-edit">← Edit Details</button>
+                <button id="btn-word" onclick="downloadWord()" class="dl-btn dl-btn-word">⬇ Save as Word</button>
+                <button id="btn-pdf" onclick="downloadPDF()" class="dl-btn dl-btn-pdf">⬇ Save as PDF</button>
+              </div>
             </div>
-          </div>
-        `;
+          </div>`;
+
+        setTimeout(() => {
+          ['executive', 'modern', 'minimal'].forEach(id => {
+            const el = document.getElementById(`thumb-${id}`);
+            if (!el) return;
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'transform:scale(0.19);transform-origin:top left;width:794px;pointer-events:none';
+            wrapper.innerHTML = getCVHTML(id, state.data);
+            el.appendChild(wrapper);
+          });
+        }, 50);
       }
     }
 
-    // Initial Render
+    function selectTemplate(id) {
+      state.selectedTemplate = id;
+      const cvRender = document.getElementById('cv-render');
+      if (cvRender) cvRender.innerHTML = getCVHTML(id, state.data);
+      render();
+    }
+
     render();
   </script>
 </body>
