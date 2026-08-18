@@ -1,13 +1,18 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Resunex — Create Your CV Free</title>
+  <title>Resunex — Modern AI Resume Studio</title>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   
+  <!-- Google Fonts: Inter & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+
   <!-- PDF.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   
@@ -17,43 +22,86 @@
   <!-- html2pdf.js CDN (Direct PDF Download) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Plus Jakarta Sans', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
   <style>
     @media print {
       @page { margin: 0; }
-      body { margin: 1.5cm; }
+      body { margin: 1.5cm; background: #fff !important; }
       body * { visibility: hidden; }
       #cv-preview-card, #cv-preview-card * { visibility: visible; }
       #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; border: none !important; box-shadow: none !important; }
       header, .no-print { display: none !important; }
     }
+    
+    .glass-card {
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+
+    .subtle-grid {
+      background-size: 30px 30px;
+      background-image: radial-gradient(circle, rgba(203, 213, 225, 0.4) 1px, transparent 1px);
+    }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+<body class="bg-slate-900/5 bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col antialiased subtle-grid selection:bg-brand-500 selection:text-white">
 
   <!-- Header -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-50 no-print">
-    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <button id="backBtn" onclick="handleBack()" class="hidden text-sm font-medium text-slate-500 hover:text-slate-800 border border-slate-200 rounded-lg px-3 py-1.5 transition-all">
-          ← Back
-        </button>
-        <span class="text-xl font-black tracking-tight text-blue-600 cursor-pointer" onclick="setState({ page: 'landing' })">Resunex</span>
-      </div>
+  <header class="bg-white/80 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-50 no-print transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
       <div class="flex items-center gap-3">
-        <button onclick="accessAdmin()" class="text-sm font-medium text-slate-600 hover:text-slate-900 px-3 py-1.5 border border-slate-200 rounded-lg bg-slate-50">
-          📊 Analytics
+        <button id="backBtn" onclick="handleBack()" class="hidden text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 hover:border-slate-300 rounded-xl px-3 py-2 transition-all flex items-center gap-1.5 bg-white shadow-xs">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+          Back
+        </button>
+        <span onclick="setState({ page: 'landing' })" class="text-xl font-display font-extrabold tracking-tight bg-gradient-to-r from-brand-600 to-indigo-600 bg-clip-text text-transparent cursor-pointer flex items-center gap-2">
+          <span class="p-1.5 bg-brand-600 text-white rounded-lg inline-flex items-center justify-center shadow-sm text-xs">R</span>
+          Resunex
+        </span>
+      </div>
+      
+      <div class="flex items-center gap-3">
+        <button onclick="accessAdmin()" class="text-xs font-semibold text-slate-700 hover:text-slate-900 px-3.5 py-2 border border-slate-200/80 hover:border-slate-300 rounded-xl bg-white shadow-xs hover:shadow-sm transition-all flex items-center gap-2">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          Analytics Hub
         </button>
       </div>
     </div>
   </header>
 
   <!-- Main Container -->
-  <main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 py-8 flex flex-col justify-center">
+  <main id="app" class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 flex flex-col justify-center">
     <!-- Dynamic Content Rendered Here -->
   </main>
 
   <!-- Toast Notification Container -->
-  <div id="toast" class="fixed bottom-6 right-6 hidden z-50 no-print"></div>
+  <div id="toast" class="fixed bottom-6 right-6 hidden z-50 no-print transition-all duration-300 transform translate-y-0"></div>
 
   <!-- JavaScript Logic -->
   <script>
@@ -61,11 +109,10 @@
     const API = "/api/claude";
     const MODEL = "gemini-2.5-flash";
     const ANALYTICS_ENDPOINT = "/api/analytics/track-download"; 
-    const ADMIN_PASSWORD = "admin123"; // Change your admin passcode here
+    const ADMIN_PASSWORD = "admin123";
 
     // ─── ADMIN SECURITY FUNCTION ──────────────────────────────
     function accessAdmin() {
-      // Check if session is already authenticated
       if (sessionStorage.getItem('admin_authenticated') === 'true') {
         setState({ page: 'admin' });
         return;
@@ -447,10 +494,15 @@
       // Toast UI
       const toastEl = document.getElementById("toast");
       if (state.toast) {
-        toastEl.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-white font-medium text-sm flex items-center gap-2 ${
-          state.toast.type === "ok" ? "bg-emerald-600" : "bg-red-600"
+        toastEl.className = `fixed bottom-6 right-6 z-50 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-medium flex items-center gap-3 backdrop-blur-md ${
+          state.toast.type === "ok" 
+            ? "bg-slate-900/90 text-white border-slate-700/50 shadow-slate-900/20" 
+            : "bg-red-900/90 text-white border-red-700/50 shadow-red-900/20"
         }`;
-        toastEl.innerHTML = state.toast.msg;
+        toastEl.innerHTML = `
+          <span>${state.toast.type === 'ok' ? '✨' : '⚠️'}</span>
+          <span>${state.toast.msg}</span>
+        `;
         toastEl.classList.remove("hidden");
       } else {
         toastEl.classList.add("hidden");
@@ -459,46 +511,94 @@
       // Page Router
       if (state.page === "landing") {
         app.innerHTML = `
-          <div class="text-center py-16 max-w-3xl mx-auto space-y-6">
-            <span class="bg-blue-50 text-blue-600 text-xs font-semibold px-3 py-1 rounded-full border border-blue-100">✨ Zero fees · No signup · AI-powered</span>
-            <h1 class="text-5xl font-extrabold tracking-tight text-slate-900 leading-tight">
-              Create your CV in minutes — <span class="text-blue-600">100% free, always.</span>
+          <div class="text-center py-12 md:py-20 max-w-4xl mx-auto space-y-8">
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand-50 border border-brand-100/80 text-brand-700 text-xs font-semibold shadow-xs">
+              <span class="flex h-2 w-2 rounded-full bg-brand-500 animate-pulse"></span>
+              AI-Powered Resume Optimization · 100% Free
+            </div>
+            
+            <h1 class="text-4xl sm:text-6xl font-display font-extrabold tracking-tight text-slate-900 leading-[1.15]">
+              Craft modern, high-scoring resumes <span class="bg-gradient-to-r from-brand-600 to-indigo-600 bg-clip-text text-transparent">in minutes.</span>
             </h1>
-            <p class="text-slate-600 text-lg">Upload your existing CV to auto-fill, or build from scratch with AI assistance.</p>
-            <div class="flex items-center justify-center gap-4 pt-4">
-              <button onclick="setState({ page: 'builder' })" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3.5 rounded-xl shadow-md transition-all">
-                ⚡ Build My CV — Free
+            
+            <p class="text-slate-600 text-base sm:text-xl max-w-2xl mx-auto font-normal leading-relaxed">
+              Upload your existing resume for smart parsing, or build a perfectly formatted, ATS-friendly CV from scratch.
+            </p>
+            
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+              <button onclick="setState({ page: 'builder' })" class="w-full sm:w-auto bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-semibold px-8 py-4 rounded-2xl shadow-lg shadow-brand-500/25 hover:shadow-brand-500/35 transition-all flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                Build From Scratch
               </button>
-              <button onclick="setState({ page: 'upload' })" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold px-6 py-3.5 rounded-xl transition-all">
-                📄 Upload & Reformat CV
+              <button onclick="setState({ page: 'upload' })" class="w-full sm:w-auto bg-white hover:bg-slate-50 border border-slate-200/80 hover:border-slate-300 text-slate-700 font-semibold px-8 py-4 rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2">
+                <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                Upload & Reformat CV
               </button>
+            </div>
+
+            <!-- Feature Pills -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 pt-12 max-w-3xl mx-auto text-left">
+              <div class="p-4 rounded-2xl bg-white border border-slate-200/60 shadow-xs">
+                <div class="text-brand-600 text-lg mb-1">⚡</div>
+                <div class="font-bold text-xs text-slate-900">Instant Extraction</div>
+                <div class="text-[11px] text-slate-500">PDF, DOCX & Image parsing</div>
+              </div>
+              <div class="p-4 rounded-2xl bg-white border border-slate-200/60 shadow-xs">
+                <div class="text-brand-600 text-lg mb-1">🎯</div>
+                <div class="font-bold text-xs text-slate-900">ATS Optimized</div>
+                <div class="text-[11px] text-slate-500">Real-time keyword scoring</div>
+              </div>
+              <div class="p-4 rounded-2xl bg-white border border-slate-200/60 shadow-xs">
+                <div class="text-brand-600 text-lg mb-1">🔒</div>
+                <div class="font-bold text-xs text-slate-900">Privacy First</div>
+                <div class="text-[11px] text-slate-500">No mandatory registration</div>
+              </div>
+              <div class="p-4 rounded-2xl bg-white border border-slate-200/60 shadow-xs">
+                <div class="text-brand-600 text-lg mb-1">📄</div>
+                <div class="font-bold text-xs text-slate-900">PDF Export</div>
+                <div class="text-[11px] text-slate-500">Clean single-click export</div>
+              </div>
             </div>
           </div>
         `;
       } else if (state.page === "upload") {
         app.innerHTML = `
-          <div class="max-w-2xl mx-auto w-full space-y-6">
+          <div class="max-w-xl mx-auto w-full space-y-6">
             <div class="text-center space-y-2">
-              <h2 class="text-3xl font-bold text-slate-900">Upload Your CV</h2>
-              <p class="text-slate-500 text-sm">Upload your resume and AI will extract all your details automatically.</p>
+              <h2 class="text-2xl font-display font-bold text-slate-900">Upload Your Resume</h2>
+              <p class="text-slate-500 text-sm">Upload your current CV file. AI will parse sections automatically.</p>
             </div>
 
-            <div id="dropZone" class="border-2 border-dashed border-blue-200 hover:border-blue-500 bg-blue-50/50 rounded-2xl p-10 text-center transition-all cursor-pointer">
+            <div id="dropZone" class="border-2 border-dashed border-slate-300 hover:border-brand-500 bg-white/60 hover:bg-brand-50/30 rounded-3xl p-10 text-center transition-all cursor-pointer group shadow-sm">
               <input type="file" id="fileInput" accept=".pdf,.docx,.png,.jpg,.jpeg,.webp" class="hidden" onchange="handleFileUpload(this.files[0])"/>
               <div onclick="document.getElementById('fileInput').click()" class="space-y-4">
-                <div class="w-16 h-16 bg-white rounded-full shadow-sm mx-auto flex items-center justify-center text-blue-600">☁️</div>
-                <div>
-                  <p class="font-semibold text-slate-700">Drag & drop your resume here</p>
-                  <p class="text-xs text-slate-400 mt-1">or click below to browse</p>
+                <div class="w-16 h-16 bg-brand-50 group-hover:scale-110 rounded-2xl border border-brand-100 shadow-xs mx-auto flex items-center justify-center text-brand-600 transition-transform">
+                  <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 0115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
                 </div>
-                <button type="button" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-5 py-2.5 rounded-xl text-sm shadow-sm transition-all">
-                  📁 Choose File
+                <div>
+                  <p class="font-semibold text-slate-800 text-base">Drag & drop your file here</p>
+                  <p class="text-xs text-slate-400 mt-1">Supports PDF, DOCX, JPG, PNG & WEBP</p>
+                </div>
+                <button type="button" class="bg-brand-600 hover:bg-brand-700 text-white font-medium px-5 py-2.5 rounded-xl text-xs shadow-xs transition-all">
+                  Browse Files
                 </button>
               </div>
             </div>
 
-            ${state.uploadMessage ? `
-              <p class="text-center text-sm font-medium ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-blue-600'}">
+            ${state.uploadProgress !== null ? `
+              <div class="bg-white border border-slate-200/80 p-5 rounded-2xl space-y-3 shadow-xs">
+                <div class="flex justify-between text-xs font-semibold text-slate-700">
+                  <span>${state.uploadMessage}</span>
+                  <span>${state.uploadProgress}%</span>
+                </div>
+                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div class="bg-brand-600 h-2 rounded-full transition-all duration-300" style="width: ${state.uploadProgress}%"></div>
+                </div>
+              </div>
+            ` : ''}
+
+            ${state.uploadMessage && state.uploadProgress === null ? `
+              <p class="text-center text-xs font-semibold ${state.uploadMessage.startsWith('❌') ? 'text-red-500' : 'text-brand-600'}">
                 ${state.uploadMessage}
               </p>
             ` : ''}
@@ -516,72 +616,72 @@
         const uniqueEmails = new Set(logs.map(l => l.userEmail).filter(e => e && e !== 'N/A')).size;
 
         app.innerHTML = `
-          <div class="max-w-6xl mx-auto w-full space-y-6">
-            <div class="flex items-center justify-between">
+          <div class="max-w-6xl mx-auto w-full space-y-8">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 class="text-3xl font-bold text-slate-900">Download Analytics</h2>
-                <p class="text-slate-500 text-sm">Track users who have generated and downloaded CVs.</p>
+                <h2 class="text-2xl font-display font-bold text-slate-900">Analytics & Downloads</h2>
+                <p class="text-slate-500 text-xs mt-0.5">Track generated candidate CV records and exports.</p>
               </div>
               <div class="flex gap-2">
-                <button onclick="lockAdmin()" class="text-xs bg-slate-100 text-slate-700 hover:bg-slate-200 font-semibold px-4 py-2 rounded-xl border border-slate-300 transition-all">
-                  🔒 Lock Admin
+                <button onclick="lockAdmin()" class="text-xs bg-white text-slate-700 hover:bg-slate-50 font-semibold px-4 py-2.5 rounded-xl border border-slate-200 shadow-xs transition-all">
+                  🔒 Lock Session
                 </button>
-                <button onclick="clearLogs()" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 font-semibold px-4 py-2 rounded-xl border border-red-200 transition-all">
-                  🗑️ Clear Logs
+                <button onclick="clearLogs()" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 font-semibold px-4 py-2.5 rounded-xl border border-red-200/80 transition-all">
+                  🗑️ Clear Analytics
                 </button>
               </div>
             </div>
 
             <!-- KPI Cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-                <p class="text-xs font-semibold uppercase text-slate-400">Total Downloads</p>
-                <p class="text-3xl font-black text-blue-600 mt-2">${logs.length}</p>
+              <div class="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs">
+                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Downloads</p>
+                <p class="text-3xl font-display font-extrabold text-brand-600 mt-2">${logs.length}</p>
               </div>
-              <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-                <p class="text-xs font-semibold uppercase text-slate-400">Unique Emails Tracked</p>
-                <p class="text-3xl font-black text-emerald-600 mt-2">${uniqueEmails}</p>
+              <div class="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs">
+                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Unique Users</p>
+                <p class="text-3xl font-display font-extrabold text-emerald-600 mt-2">${uniqueEmails}</p>
               </div>
-              <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-                <p class="text-xs font-semibold uppercase text-slate-400">Latest Download</p>
-                <p class="text-sm font-bold text-slate-700 mt-2">${logs[0]?.timestamp || 'No downloads yet'}</p>
+              <div class="bg-white border border-slate-200/80 p-6 rounded-2xl shadow-xs">
+                <p class="text-xs font-semibold uppercase tracking-wider text-slate-400">Latest Activity</p>
+                <p class="text-sm font-semibold text-slate-700 mt-3 truncate">${logs[0]?.timestamp || 'No record yet'}</p>
               </div>
             </div>
 
             <!-- Logs Table Container -->
-            <div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-              <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+            <div class="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+              <div class="p-4 border-b border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
                 <input 
                   type="text" 
                   placeholder="🔍 Search name, email, or filename..." 
                   value="${state.adminSearch}"
                   oninput="setState({ adminSearch: this.value })"
-                  class="w-full md:w-80 border border-slate-200 rounded-xl px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  class="w-full sm:w-80 bg-slate-50/50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"
                 />
-                <span class="text-xs text-slate-400 font-medium">${filteredLogs.length} Records</span>
+                <span class="text-xs text-slate-400 font-medium">${filteredLogs.length} Records found</span>
               </div>
 
               <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm text-slate-600">
-                  <thead class="bg-slate-50 text-slate-700 text-xs uppercase font-semibold border-b border-slate-100">
+                <table class="w-full text-left text-xs text-slate-600">
+                  <thead class="bg-slate-50/80 text-slate-500 uppercase tracking-wider text-[10px] font-bold border-b border-slate-100">
                     <tr>
                       <th class="p-4">Timestamp</th>
                       <th class="p-4">User Name</th>
                       <th class="p-4">Email</th>
-                      <th class="p-4">Filename</th>
+                      <th class="p-4">Export File</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-slate-100">
                     ${filteredLogs.length > 0 ? filteredLogs.map(log => `
-                      <tr class="hover:bg-slate-50/80 transition-all">
-                        <td class="p-4 text-xs font-medium text-slate-400 whitespace-nowrap">${log.timestamp}</td>
+                      <tr class="hover:bg-slate-50/60 transition-all">
+                        <td class="p-4 font-medium text-slate-400 whitespace-nowrap">${log.timestamp}</td>
                         <td class="p-4 font-semibold text-slate-900 whitespace-nowrap">${log.userName}</td>
                         <td class="p-4 text-slate-600 whitespace-nowrap">${log.userEmail !== 'N/A' ? `📧 ${log.userEmail}` : '<span class="text-slate-300">N/A</span>'}</td>
-                        <td class="p-4 text-xs font-mono text-slate-500 whitespace-nowrap">${log.filename}</td>
+                        <td class="p-4 font-mono text-slate-500 whitespace-nowrap">${log.filename}</td>
                       </tr>
                     `).join('') : `
                       <tr>
-                        <td colspan="4" class="p-8 text-center text-slate-400 text-sm">No download records found.</td>
+                        <td colspan="4" class="p-8 text-center text-slate-400 text-xs">No activity logs recorded.</td>
                       </tr>
                     `}
                   </tbody>
@@ -598,87 +698,89 @@
         const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical.join(", ") : (d.skills?.technical || "");
         const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft.join(", ") : (d.skills?.soft || "");
         const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications.join(", ") : (d.skills?.certifications || "");
+        const score = atsScore(d);
 
         app.innerHTML = `
-          <div class="max-w-4xl mx-auto w-full space-y-8">
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex items-center justify-between">
+          <div class="max-w-4xl mx-auto w-full space-y-6">
+            <!-- Header Status -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs flex items-center justify-between">
               <div>
-                <h2 class="text-2xl font-bold text-slate-900">Resume Builder</h2>
-                <p class="text-xs text-slate-500">Review and edit your parsed resume details.</p>
+                <h2 class="text-xl font-display font-bold text-slate-900">Resume Details Editor</h2>
+                <p class="text-xs text-slate-500">Fine-tune details before generating PDF layout.</p>
               </div>
-              <div class="bg-emerald-50 text-emerald-700 font-semibold text-sm px-4 py-2 rounded-xl border border-emerald-200">
-                ATS Score: ${atsScore(d)}%
+              <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl border ${score >= 70 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}">
+                <span class="text-xs font-bold">ATS Compatibility: ${score}%</span>
               </div>
             </div>
 
-            <!-- Personal Info -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <h3 class="text-lg font-bold text-slate-800 border-b pb-2">👤 Personal Details</h3>
+            <!-- Personal Details -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
+              <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider text-brand-600 border-b border-slate-100 pb-2">👤 Personal Contact Details</h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label class="block text-xs font-semibold text-slate-600 mb-1">First Name</label>
-                  <input type="text" value="${d.personal?.firstName || ''}" onchange="updData('personal.firstName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <input type="text" value="${d.personal?.firstName || ''}" onchange="updData('personal.firstName', this.value)" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-slate-600 mb-1">Last Name</label>
-                  <input type="text" value="${d.personal?.lastName || ''}" onchange="updData('personal.lastName', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <input type="text" value="${d.personal?.lastName || ''}" onchange="updData('personal.lastName', this.value)" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-slate-600 mb-1">Email</label>
-                  <input type="email" value="${d.personal?.email || ''}" onchange="updData('personal.email', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <input type="email" value="${d.personal?.email || ''}" onchange="updData('personal.email', this.value)" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-slate-600 mb-1">Phone</label>
-                  <input type="text" value="${d.personal?.phone || ''}" onchange="updData('personal.phone', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <input type="text" value="${d.personal?.phone || ''}" onchange="updData('personal.phone', this.value)" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">LinkedIn</label>
-                  <input type="text" value="${d.personal?.linkedin || ''}" onchange="updData('personal.linkedin', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">LinkedIn Profile</label>
+                  <input type="text" value="${d.personal?.linkedin || ''}" onchange="updData('personal.linkedin', this.value)" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
                 <div>
                   <label class="block text-xs font-semibold text-slate-600 mb-1">GitHub / Portfolio</label>
-                  <input type="text" value="${d.personal?.github || d.personal?.portfolio || ''}" onchange="updData('personal.github', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <input type="text" value="${d.personal?.github || d.personal?.portfolio || ''}" onchange="updData('personal.github', this.value)" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
               </div>
             </div>
 
             <!-- Professional Summary -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <h3 class="text-lg font-bold text-slate-800 border-b pb-2">📝 Professional Summary</h3>
-              <textarea rows="4" onchange="updData('summary', this.value)" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500">${d.summary || ''}</textarea>
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
+              <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider text-brand-600 border-b border-slate-100 pb-2">📝 Summary Statement</h3>
+              <textarea rows="3" onchange="updData('summary', this.value)" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-3 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all">${d.summary || ''}</textarea>
             </div>
 
-            <!-- Experience -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div class="flex items-center justify-between border-b pb-2">
-                <h3 class="text-lg font-bold text-slate-800">💼 Work Experience</h3>
-                <button onclick="addItem('experience', { company: '', title: '', from: '', to: '', resp: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Position</button>
+            <!-- Work Experience -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider text-brand-600">💼 Work Experience</h3>
+                <button onclick="addItem('experience', { company: '', title: '', from: '', to: '', resp: '' })" class="text-xs font-semibold bg-brand-50 text-brand-600 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-all">+ Position</button>
               </div>
-              <div class="space-y-6">
+              <div class="space-y-4">
                 ${expList.map((exp, idx) => `
-                  <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('experience', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
+                  <div class="p-4 border border-slate-200/80 bg-slate-50/40 rounded-xl space-y-3 relative">
+                    <button onclick="removeItem('experience', ${idx})" class="absolute top-3 right-3 text-red-500 text-[11px] font-semibold hover:underline">Delete</button>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">Company</label>
-                        <input type="text" value="${exp.company || ''}" onchange="updateArrayItem('experience', ${idx}, 'company', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">Company</label>
+                        <input type="text" value="${exp.company || ''}" onchange="updateArrayItem('experience', ${idx}, 'company', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">Job Title</label>
-                        <input type="text" value="${exp.title || ''}" onchange="updateArrayItem('experience', ${idx}, 'title', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">Job Title</label>
+                        <input type="text" value="${exp.title || ''}" onchange="updateArrayItem('experience', ${idx}, 'title', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">From</label>
-                        <input type="text" value="${exp.from || ''}" onchange="updateArrayItem('experience', ${idx}, 'from', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">From</label>
+                        <input type="text" value="${exp.from || ''}" onchange="updateArrayItem('experience', ${idx}, 'from', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">To</label>
-                        <input type="text" value="${exp.to || ''}" onchange="updateArrayItem('experience', ${idx}, 'to', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">To</label>
+                        <input type="text" value="${exp.to || ''}" onchange="updateArrayItem('experience', ${idx}, 'to', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                     </div>
                     <div>
-                      <label class="block text-xs font-medium text-slate-500">Responsibilities</label>
-                      <textarea rows="3" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${exp.resp || ''}</textarea>
+                      <label class="block text-[11px] font-medium text-slate-500">Responsibilities</label>
+                      <textarea rows="3" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white">${exp.resp || ''}</textarea>
                     </div>
                   </div>
                 `).join('')}
@@ -686,31 +788,31 @@
             </div>
 
             <!-- Education -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div class="flex items-center justify-between border-b pb-2">
-                <h3 class="text-lg font-bold text-slate-800">🎓 Education</h3>
-                <button onclick="addItem('education', { college: '', degree: '', spec: '', from: '', to: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Education</button>
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider text-brand-600">🎓 Education</h3>
+                <button onclick="addItem('education', { college: '', degree: '', spec: '', from: '', to: '' })" class="text-xs font-semibold bg-brand-50 text-brand-600 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-all">+ Education</button>
               </div>
-              <div class="space-y-6">
+              <div class="space-y-4">
                 ${eduList.map((edu, idx) => `
-                  <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('education', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
+                  <div class="p-4 border border-slate-200/80 bg-slate-50/40 rounded-xl space-y-3 relative">
+                    <button onclick="removeItem('education', ${idx})" class="absolute top-3 right-3 text-red-500 text-[11px] font-semibold hover:underline">Delete</button>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">Institution / College</label>
-                        <input type="text" value="${edu.college || ''}" onchange="updateArrayItem('education', ${idx}, 'college', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">Institution</label>
+                        <input type="text" value="${edu.college || ''}" onchange="updateArrayItem('education', ${idx}, 'college', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">Degree & Major</label>
-                        <input type="text" value="${edu.degree || ''} ${edu.spec || ''}" onchange="updateArrayItem('education', ${idx}, 'degree', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">Degree / Major</label>
+                        <input type="text" value="${edu.degree || ''} ${edu.spec || ''}" onchange="updateArrayItem('education', ${idx}, 'degree', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">From</label>
-                        <input type="text" value="${edu.from || ''}" onchange="updateArrayItem('education', ${idx}, 'from', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">From</label>
+                        <input type="text" value="${edu.from || ''}" onchange="updateArrayItem('education', ${idx}, 'from', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">To</label>
-                        <input type="text" value="${edu.to || ''}" onchange="updateArrayItem('education', ${idx}, 'to', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">To</label>
+                        <input type="text" value="${edu.to || ''}" onchange="updateArrayItem('education', ${idx}, 'to', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                     </div>
                   </div>
@@ -719,57 +821,57 @@
             </div>
 
             <!-- Key Projects -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div class="flex items-center justify-between border-b pb-2">
-                <h3 class="text-lg font-bold text-slate-800">🚀 Key Projects</h3>
-                <button onclick="addItem('projects', { name: '', desc: '', tech: '' })" class="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-blue-100">+ Add Project</button>
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider text-brand-600">🚀 Key Projects</h3>
+                <button onclick="addItem('projects', { name: '', desc: '', tech: '' })" class="text-xs font-semibold bg-brand-50 text-brand-600 hover:bg-brand-100 px-3 py-1.5 rounded-lg transition-all">+ Project</button>
               </div>
-              <div class="space-y-6">
+              <div class="space-y-4">
                 ${projList.map((proj, idx) => `
-                  <div class="p-4 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3 relative">
-                    <button onclick="removeItem('projects', ${idx})" class="absolute top-3 right-3 text-red-500 text-xs hover:underline">Remove</button>
+                  <div class="p-4 border border-slate-200/80 bg-slate-50/40 rounded-xl space-y-3 relative">
+                    <button onclick="removeItem('projects', ${idx})" class="absolute top-3 right-3 text-red-500 text-[11px] font-semibold hover:underline">Delete</button>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">Project Name</label>
-                        <input type="text" value="${proj.name || ''}" onchange="updateArrayItem('projects', ${idx}, 'name', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">Project Name</label>
+                        <input type="text" value="${proj.name || ''}" onchange="updateArrayItem('projects', ${idx}, 'name', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                       <div>
-                        <label class="block text-xs font-medium text-slate-500">Technologies Used</label>
-                        <input type="text" value="${proj.tech || ''}" onchange="updateArrayItem('projects', ${idx}, 'tech', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white"/>
+                        <label class="block text-[11px] font-medium text-slate-500">Tech Stack</label>
+                        <input type="text" value="${proj.tech || ''}" onchange="updateArrayItem('projects', ${idx}, 'tech', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white"/>
                       </div>
                     </div>
                     <div>
-                      <label class="block text-xs font-medium text-slate-500">Description</label>
-                      <textarea rows="2" onchange="updateArrayItem('projects', ${idx}, 'desc', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-sm bg-white">${proj.desc || ''}</textarea>
+                      <label class="block text-[11px] font-medium text-slate-500">Description</label>
+                      <textarea rows="2" onchange="updateArrayItem('projects', ${idx}, 'desc', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white">${proj.desc || ''}</textarea>
                     </div>
                   </div>
                 `).join('')}
               </div>
             </div>
 
-            <!-- Skills & Certifications -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <h3 class="text-lg font-bold text-slate-800 border-b pb-2">⚡ Skills & Certifications</h3>
-              <div class="grid grid-cols-1 gap-4">
+            <!-- Skills -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
+              <h3 class="text-sm font-bold text-slate-900 uppercase tracking-wider text-brand-600 border-b border-slate-100 pb-2">⚡ Skills & Certifications</h3>
+              <div class="space-y-3">
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Technical Skills (comma-separated)</label>
-                  <input type="text" value="${techSkills}" onchange="updData('skills.technical', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Technical Skills</label>
+                  <input type="text" value="${techSkills}" onchange="updData('skills.technical', this.value.split(',').map(s=>s.trim()))" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Soft Skills (comma-separated)</label>
-                  <input type="text" value="${softSkills}" onchange="updData('skills.soft', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Soft Skills</label>
+                  <input type="text" value="${softSkills}" onchange="updData('skills.soft', this.value.split(',').map(s=>s.trim()))" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-slate-600 mb-1">Certifications (comma-separated)</label>
-                  <input type="text" value="${certs}" onchange="updData('skills.certifications', this.value.split(',').map(s=>s.trim()))" class="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"/>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Certifications</label>
+                  <input type="text" value="${certs}" onchange="updData('skills.certifications', this.value.split(',').map(s=>s.trim()))" class="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition-all"/>
                 </div>
               </div>
             </div>
 
             <!-- Submit Action Bar -->
-            <div class="flex justify-end pt-4">
-              <button onclick="setState({ page: 'preview' })" class="bg-blue-600 hover:bg-blue-700 text-white font-bold text-base px-8 py-4 rounded-xl shadow-lg transition-all flex items-center gap-2">
-                ⚡ Generate & Preview CV →
+            <div class="flex justify-end pt-2">
+              <button onclick="setState({ page: 'preview' })" class="bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-bold text-sm px-8 py-3.5 rounded-2xl shadow-lg shadow-brand-500/20 transition-all flex items-center gap-2">
+                Generate & Preview Layout →
               </button>
             </div>
 
@@ -784,23 +886,22 @@
 
         app.innerHTML = `
           <div class="max-w-4xl mx-auto w-full space-y-6">
-            <!-- Top Controls -->
-            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex items-center justify-between no-print">
-              <button onclick="setState({ page: 'builder' })" class="text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl">
-                ← Edit Details
+            <!-- Controls Bar -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex items-center justify-between no-print">
+              <button onclick="setState({ page: 'builder' })" class="text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 transition-all">
+                ← Edit Information
               </button>
-              <div class="flex gap-3">
-                <button onclick="downloadPDF()" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-6 py-2 rounded-xl shadow-sm transition-all flex items-center gap-2">
-                  ⬇️ Download PDF
-                </button>
-              </div>
+              <button onclick="downloadPDF()" class="bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-xs transition-all flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Download PDF
+              </button>
             </div>
 
             <!-- Resume Render Card -->
-            <div id="cv-preview-card" class="bg-white border border-slate-200 shadow-md rounded-2xl p-10 space-y-6 text-slate-800">
+            <div id="cv-preview-card" class="bg-white border border-slate-200/80 shadow-md rounded-2xl p-10 space-y-6 text-slate-800">
               <!-- Header -->
               <div class="border-b border-slate-200 pb-6 text-center">
-                <h1 class="text-3xl font-extrabold text-slate-900">${fullName}</h1>
+                <h1 class="text-3xl font-display font-extrabold text-slate-900 tracking-tight">${fullName}</h1>
                 <div class="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-2">
                   ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
                   ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
@@ -811,24 +912,24 @@
 
               <!-- Summary -->
               ${d.summary ? `
-                <div class="space-y-2">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Professional Summary</h2>
-                  <p class="text-sm text-slate-700 leading-relaxed">${d.summary}</p>
+                <div class="space-y-1.5">
+                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Professional Summary</h2>
+                  <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
                 </div>
               ` : ''}
 
               <!-- Experience -->
               ${d.experience?.length ? `
-                <div class="space-y-4">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Work Experience</h2>
-                  <div class="space-y-4">
+                <div class="space-y-3">
+                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Work Experience</h2>
+                  <div class="space-y-3">
                     ${d.experience.map(exp => `
                       <div>
                         <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-sm">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3>
-                          <span class="text-xs text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span>
+                          <h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3>
+                          <span class="text-[11px] text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span>
                         </div>
-                        ${exp.resp ? `<p class="text-xs text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}
+                        ${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}
                       </div>
                     `).join('')}
                   </div>
@@ -837,16 +938,16 @@
 
               <!-- Education -->
               ${d.education?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Education</h2>
-                  <div class="space-y-3">
+                <div class="space-y-2">
+                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Education</h2>
+                  <div class="space-y-2">
                     ${d.education.map(edu => `
                       <div class="flex justify-between items-baseline">
                         <div>
-                          <h3 class="font-bold text-slate-900 text-sm">${edu.college || 'University'}</h3>
-                          <p class="text-xs text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p>
+                          <h3 class="font-bold text-slate-900 text-xs">${edu.college || 'University'}</h3>
+                          <p class="text-[11px] text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p>
                         </div>
-                        <span class="text-xs text-slate-500">${edu.from || ''} - ${edu.to || ''}</span>
+                        <span class="text-[11px] text-slate-500">${edu.from || ''} - ${edu.to || ''}</span>
                       </div>
                     `).join('')}
                   </div>
@@ -855,16 +956,16 @@
 
               <!-- Key Projects -->
               ${d.projects?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Projects</h2>
-                  <div class="space-y-3">
+                <div class="space-y-2">
+                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Projects</h2>
+                  <div class="space-y-2">
                     ${d.projects.map(proj => `
                       <div>
                         <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-sm">${proj.name || 'Project'}</h3>
-                          ${proj.tech ? `<span class="text-xs text-slate-500 italic">${proj.tech}</span>` : ''}
+                          <h3 class="font-bold text-slate-900 text-xs">${proj.name || 'Project'}</h3>
+                          ${proj.tech ? `<span class="text-[11px] text-slate-500 italic">${proj.tech}</span>` : ''}
                         </div>
-                        ${proj.desc ? `<p class="text-xs text-slate-600 mt-1">${proj.desc}</p>` : ''}
+                        ${proj.desc ? `<p class="text-[11px] text-slate-600 mt-0.5">${proj.desc}</p>` : ''}
                       </div>
                     `).join('')}
                   </div>
@@ -873,9 +974,9 @@
 
               <!-- Skills & Certifications -->
               ${(techSkills.length || softSkills.length || certs.length) ? `
-                <div class="space-y-3">
-                  <h2 class="text-sm font-bold uppercase tracking-wider text-blue-600">Skills & Certifications</h2>
-                  <div class="space-y-1 text-xs text-slate-700">
+                <div class="space-y-2">
+                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Skills & Certifications</h2>
+                  <div class="space-y-1 text-[11px] text-slate-700">
                     ${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}
                     ${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}
                     ${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}
