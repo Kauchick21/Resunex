@@ -16,9 +16,15 @@
 
   <style>
     @media print {
+      @page {
+        margin: 0; /* Removes browser print headers (date, title) and footers (URL, page count) */
+      }
+      body {
+        margin: 1.5cm; /* Restores standard document padding on print output */
+      }
       body * { visibility: hidden; }
       #cv-preview-card, #cv-preview-card * { visibility: visible; }
-      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; }
+      #cv-preview-card { position: absolute; left: 0; top: 0; width: 100%; border: none !important; box-shadow: none !important; }
       header, .no-print { display: none !important; }
     }
   </style>
