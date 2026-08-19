@@ -8,10 +8,10 @@
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   
-  <!-- Google Fonts: Inter & Plus Jakarta Sans -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&family=Merriweather:ital,wght@0,300;0,400;0,700;1,300&family=Fira+Code:wght@400;500&family=Outfit:wght@400;500;600;700&family=Playfair+Display:wght@600;700;800&display=swap" rel="stylesheet">
 
   <!-- PDF.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -29,6 +29,10 @@
           fontFamily: {
             sans: ['Inter', 'sans-serif'],
             display: ['Plus Jakarta Sans', 'sans-serif'],
+            serif: ['Merriweather', 'serif'],
+            mono: ['Fira Code', 'monospace'],
+            outfit: ['Outfit', 'sans-serif'],
+            playfair: ['Playfair Display', 'serif'],
           },
           colors: {
             brand: {
@@ -109,7 +113,7 @@
     const API = "/api/claude";
     const MODEL = "gemini-2.5-flash";
     const ANALYTICS_ENDPOINT = "/api/analytics/track-download"; 
-    const ADMIN_PASSWORD = "kauchick@91";
+    const ADMIN_PASSWORD = "admin123";
 
     // ─── ADMIN SECURITY FUNCTION ──────────────────────────────
     function accessAdmin() {
@@ -157,7 +161,7 @@
       const firstName = state.data?.personal?.firstName || 'Resume';
       const lastName = state.data?.personal?.lastName || '';
       const email = state.data?.personal?.email || 'N/A';
-      const filename = `${firstName}_${lastName}_CV.pdf`.replace(/\s+/g, '_');
+      const filename = `${firstName}_${lastName}_CV_${state.selectedTemplate}.pdf`.replace(/\s+/g, '_');
 
       showToast("Generating PDF download...", "ok");
 
@@ -354,6 +358,17 @@
       };
     }
 
+    // ─── TEMPLATES DATA ──────────────────────────────────────────
+    const TEMPLATES = [
+      { id: 'modern', name: 'Modern Minimal', tag: 'Popular', icon: '✨' },
+      { id: 'executive', name: 'Executive Dark Header', tag: 'Corporate', icon: '💼' },
+      { id: 'tech', name: 'Tech / Developer', tag: 'Monospace', icon: '⚡' },
+      { id: 'classic', name: 'Classic Serif', tag: 'Traditional', icon: '🏛️' },
+      { id: 'sidebar', name: 'Modern Split Sidebar', tag: 'Creative', icon: '📊' },
+      { id: 'emerald', name: 'Emerald Elegant', tag: 'Clean', icon: '🌿' },
+      { id: 'compact', name: 'Compact ATS', tag: 'Dense', icon: '🎯' }
+    ];
+
     // ─── STATE MANAGEMENT ────────────────────────────────────────
     let state = {
       page: "landing",
@@ -361,7 +376,8 @@
       toast: null,
       uploadProgress: null,
       uploadMessage: "",
-      adminSearch: ""
+      adminSearch: "",
+      selectedTemplate: "modern"
     };
 
     function setState(patch) { 
@@ -484,6 +500,168 @@
       }
     }
 
+    // ─── TEMPLATE RENDERERS ──────────────────────────────────────
+    function renderTemplateContent(templateId, d) {
+      const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
+      const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
+      const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
+      const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
+
+      // 1. Modern Minimal (Original Clean)
+      if (templateId === 'modern') {
+        return `
+          <div class="space-y-6 font-sans text-slate-800">
+            <div class="border-b border-slate-200 pb-6 text-center">
+              <h1 class="text-3xl font-display font-extrabold text-slate-900 tracking-tight">${fullName}</h1>
+              <div class="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-2">
+                ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
+                ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
+              </div>
+            </div>
+            ${d.summary ? `<div class="space-y-1.5"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Professional Summary</h2><p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Work Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3><span class="text-[11px] text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Education</h2><div class="space-y-2">${d.education.map(edu => `<div class="flex justify-between items-baseline"><div><h3 class="font-bold text-slate-900 text-xs">${edu.college || 'University'}</h3><p class="text-[11px] text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p></div><span class="text-[11px] text-slate-500">${edu.from || ''} - ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
+            ${d.projects?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Projects</h2><div class="space-y-2">${d.projects.map(proj => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${proj.name || 'Project'}</h3>${proj.tech ? `<span class="text-[11px] text-slate-500 italic">${proj.tech}</span>` : ''}</div>${proj.desc ? `<p class="text-[11px] text-slate-600 mt-0.5">${proj.desc}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${(techSkills.length || softSkills.length || certs.length) ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Skills & Certifications</h2><div class="space-y-1 text-[11px] text-slate-700">${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}</div></div>` : ''}
+          </div>
+        `;
+      }
+
+      // 2. Executive Dark Header
+      if (templateId === 'executive') {
+        return `
+          <div class="space-y-6 font-sans text-slate-800 -m-10">
+            <div class="bg-slate-900 text-white p-8 mb-6">
+              <h1 class="text-3xl font-display font-bold tracking-tight text-white">${fullName}</h1>
+              <div class="flex flex-wrap items-center gap-4 text-xs text-slate-300 mt-3">
+                ${d.personal?.email ? `<span>✉️ ${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>🌐 ${d.personal.linkedin}</span>` : ''}
+                ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
+              </div>
+            </div>
+            <div class="px-10 space-y-6 pb-10">
+              ${d.summary ? `<div class="space-y-1.5"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Executive Summary</h2><p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p></div>` : ''}
+              ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Professional Experience</h2><div class="space-y-4">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} <span class="font-normal text-slate-600">| ${exp.company || ''}</span></h3><span class="text-[11px] text-slate-500 font-medium">${exp.from || ''} – ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1.5 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+              ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Education</h2><div class="space-y-2">${d.education.map(edu => `<div class="flex justify-between items-baseline"><div><h3 class="font-bold text-slate-900 text-xs">${edu.college || 'University'}</h3><p class="text-[11px] text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p></div><span class="text-[11px] text-slate-500">${edu.from || ''} – ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
+              ${(techSkills.length || softSkills.length || certs.length) ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Core Competencies</h2><div class="grid grid-cols-2 gap-2 text-[11px] text-slate-700">${techSkills.length ? `<div><strong>Technical:</strong> ${techSkills.join(', ')}</div>` : ''}${softSkills.length ? `<div><strong>Leadership:</strong> ${softSkills.join(', ')}</div>` : ''}${certs.length ? `<div class="col-span-2"><strong>Certifications:</strong> ${certs.join(', ')}</div>` : ''}</div></div>` : ''}
+            </div>
+          </div>
+        `;
+      }
+
+      // 3. Tech Monospace
+      if (templateId === 'tech') {
+        return `
+          <div class="space-y-6 font-mono text-slate-800 text-xs">
+            <div class="border-b-2 border-slate-900 pb-4">
+              <h1 class="text-2xl font-bold text-slate-900">&lt;${fullName} /&gt;</h1>
+              <div class="flex flex-wrap gap-3 text-[11px] text-slate-600 mt-2 font-mono">
+                ${d.personal?.email ? `<span>[email: ${d.personal.email}]</span>` : ''}
+                ${d.personal?.phone ? `<span>[phone: ${d.personal.phone}]</span>` : ''}
+                ${d.personal?.github ? `<span>[github: ${d.personal.github}]</span>` : ''}
+              </div>
+            </div>
+            ${d.summary ? `<div class="space-y-1"><h2 class="font-bold text-slate-900 text-xs">// ABOUT_ME</h2><p class="text-[11px] text-slate-700 leading-relaxed font-sans">${d.summary}</p></div>` : ''}
+            ${d.projects?.length ? `<div class="space-y-3"><h2 class="font-bold text-slate-900 text-xs">// FEATURED_PROJECTS</h2><div class="space-y-3">${d.projects.map(proj => `<div class="bg-slate-50 p-3 rounded border border-slate-200"><div class="flex justify-between font-bold text-slate-900"><span>${proj.name || 'Project'}</span><span class="text-[10px] text-slate-500">${proj.tech || ''}</span></div>${proj.desc ? `<p class="text-[11px] text-slate-600 mt-1 font-sans">${proj.desc}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-3"><h2 class="font-bold text-slate-900 text-xs">// EXPERIENCE</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between font-bold text-slate-900"><span>${exp.title || 'Role'} @ ${exp.company || ''}</span><span class="text-[10px] text-slate-500">${exp.from || ''} - ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 font-sans leading-relaxed">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${techSkills.length ? `<div class="space-y-1"><h2 class="font-bold text-slate-900 text-xs">// TECH_STACK</h2><div class="flex flex-wrap gap-1.5">${techSkills.map(s => `<span class="bg-slate-100 text-slate-800 px-2 py-0.5 rounded text-[10px] border border-slate-200">${s}</span>`).join('')}</div></div>` : ''}
+          </div>
+        `;
+      }
+
+      // 4. Classic Serif
+      if (templateId === 'classic') {
+        return `
+          <div class="space-y-5 font-serif text-slate-900">
+            <div class="text-center border-b border-slate-300 pb-5">
+              <h1 class="text-3xl font-bold tracking-normal font-serif text-slate-900">${fullName}</h1>
+              <div class="flex flex-wrap items-center justify-center gap-3 text-xs italic text-slate-600 mt-2">
+                ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>• ${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>• ${d.personal.linkedin}</span>` : ''}
+              </div>
+            </div>
+            ${d.summary ? `<div class="space-y-1"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Summary</h2><p class="text-xs text-slate-700 leading-relaxed font-serif">${d.summary}</p></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-xs text-slate-900">${exp.title || 'Role'}, <span class="italic font-normal">${exp.company || ''}</span></h3><span class="text-[11px] italic text-slate-600">${exp.from || ''} – ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-700 mt-1 leading-relaxed">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Education</h2><div class="space-y-2">${d.education.map(edu => `<div class="flex justify-between items-baseline"><div><h3 class="font-bold text-xs text-slate-900">${edu.college || 'University'}</h3><p class="text-[11px] italic text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p></div><span class="text-[11px] italic text-slate-600">${edu.from || ''} – ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
+            ${(techSkills.length || softSkills.length) ? `<div class="space-y-1"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Skills</h2><p class="text-[11px] text-slate-700">${[...techSkills, ...softSkills].join(' • ')}</p></div>` : ''}
+          </div>
+        `;
+      }
+
+      // 5. Sidebar Split
+      if (templateId === 'sidebar') {
+        return `
+          <div class="grid grid-cols-12 gap-6 font-outfit text-slate-800 -m-10">
+            <!-- Left Sidebar -->
+            <div class="col-span-4 bg-slate-100 p-6 space-y-6 border-r border-slate-200 min-h-[700px]">
+              <div>
+                <h1 class="text-2xl font-bold text-slate-900 leading-tight">${fullName}</h1>
+              </div>
+              <div class="space-y-2 text-xs text-slate-600">
+                <h2 class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Contact</h2>
+                ${d.personal?.email ? `<p class="break-all">📧 ${d.personal.email}</p>` : ''}
+                ${d.personal?.phone ? `<p>📞 ${d.personal.phone}</p>` : ''}
+                ${d.personal?.linkedin ? `<p class="break-all">🔗 ${d.personal.linkedin}</p>` : ''}
+                ${d.personal?.github ? `<p class="break-all">💻 ${d.personal.github}</p>` : ''}
+              </div>
+              ${techSkills.length ? `<div class="space-y-2"><h2 class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Technical Skills</h2><div class="flex flex-wrap gap-1">${techSkills.map(s => `<span class="bg-white border border-slate-200 px-2 py-1 rounded text-[10px] font-medium text-slate-700">${s}</span>`).join('')}</div></div>` : ''}
+              ${softSkills.length ? `<div class="space-y-1"><h2 class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Skills</h2><p class="text-xs text-slate-600">${softSkills.join(', ')}</p></div>` : ''}
+            </div>
+            <!-- Main Content -->
+            <div class="col-span-8 p-6 pl-2 space-y-5">
+              ${d.summary ? `<div class="space-y-1"><h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Profile</h2><p class="text-xs text-slate-600 leading-relaxed">${d.summary}</p></div>` : ''}
+              ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between"><h3 class="font-bold text-xs text-slate-900">${exp.title || 'Role'}</h3><span class="text-[10px] text-slate-400">${exp.from || ''} - ${exp.to || ''}</span></div><p class="text-[11px] font-semibold text-slate-500">${exp.company || ''}</p>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 leading-relaxed">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+              ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Education</h2><div class="space-y-2">${d.education.map(edu => `<div><h3 class="font-bold text-xs text-slate-900">${edu.college || 'University'}</h3><p class="text-[11px] text-slate-600">${edu.degree || ''} (${edu.from || ''} - ${edu.to || ''})</p></div>`).join('')}</div></div>` : ''}
+            </div>
+          </div>
+        `;
+      }
+
+      // 6. Emerald Elegant
+      if (templateId === 'emerald') {
+        return `
+          <div class="space-y-5 font-sans text-slate-800">
+            <div class="border-l-4 border-emerald-600 pl-4 py-1">
+              <h1 class="text-3xl font-display font-bold text-slate-900 tracking-tight">${fullName}</h1>
+              <div class="flex flex-wrap items-center gap-3 text-xs text-emerald-800 font-medium mt-1">
+                ${d.personal?.email ? `<span>${d.personal.email}</span>` : ''}
+                ${d.personal?.phone ? `<span>• ${d.personal.phone}</span>` : ''}
+                ${d.personal?.linkedin ? `<span>• ${d.personal.linkedin}</span>` : ''}
+              </div>
+            </div>
+            ${d.summary ? `<div class="space-y-1 bg-emerald-50/50 p-3 rounded-r-lg border-l-2 border-emerald-500"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-800">Overview</h2><p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-700 border-b border-emerald-100 pb-1">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} <span class="text-emerald-700 font-normal">@ ${exp.company || ''}</span></h3><span class="text-[11px] text-slate-500">${exp.from || ''} - ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 leading-relaxed">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-700 border-b border-emerald-100 pb-1">Education</h2><div class="space-y-2">${d.education.map(edu => `<div class="flex justify-between items-baseline"><div><h3 class="font-bold text-slate-900 text-xs">${edu.college || 'University'}</h3><p class="text-[11px] text-slate-600">${edu.degree || ''}</p></div><span class="text-[11px] text-slate-500">${edu.from || ''} - ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
+            ${(techSkills.length || softSkills.length) ? `<div class="space-y-1"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-700 border-b border-emerald-100 pb-1">Expertise</h2><p class="text-[11px] text-slate-700">${[...techSkills, ...softSkills].join(' • ')}</p></div>` : ''}
+          </div>
+        `;
+      }
+
+      // 7. Compact ATS
+      if (templateId === 'compact') {
+        return `
+          <div class="space-y-4 font-sans text-slate-900 text-xs leading-tight">
+            <div class="text-center border-b border-slate-900 pb-3">
+              <h1 class="text-2xl font-bold uppercase tracking-wide text-slate-900">${fullName}</h1>
+              <p class="text-[11px] text-slate-700 mt-1">
+                ${[d.personal?.email, d.personal?.phone, d.personal?.linkedin, d.personal?.github].filter(Boolean).join(' | ')}
+              </p>
+            </div>
+            ${d.summary ? `<div class="space-y-1"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Professional Summary</h2><p class="text-[11px] text-slate-800 leading-normal">${d.summary}</p></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-2"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Work Experience</h2><div class="space-y-2">${d.experience.map(exp => `<div><div class="flex justify-between font-bold"><span>${exp.company || ''} — ${exp.title || ''}</span><span>${exp.from || ''} – ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-700 mt-0.5 leading-normal">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.education?.length ? `<div class="space-y-1"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Education</h2><div class="space-y-1">${d.education.map(edu => `<div class="flex justify-between"><div><span class="font-bold">${edu.college || ''}</span>, ${edu.degree || ''}</div><span>${edu.from || ''} – ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
+            ${(techSkills.length || softSkills.length) ? `<div class="space-y-1"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Skills</h2><p class="text-[11px] text-slate-800">${[...techSkills, ...softSkills].join(', ')}</p></div>` : ''}
+          </div>
+        `;
+      }
+
+      return '';
+    }
+
     // ─── RENDER ENGINE ──────────────────────────────────────────
     function render() {
       const app = document.getElementById("app");
@@ -554,8 +732,8 @@
                 <div class="text-[11px] text-slate-500">No mandatory registration</div>
               </div>
               <div class="p-4 rounded-2xl bg-white border border-slate-200/60 shadow-xs">
-                <div class="text-brand-600 text-lg mb-1">📄</div>
-                <div class="font-bold text-xs text-slate-900">PDF Export</div>
+                <div class="text-brand-600 text-lg mb-1">🎨</div>
+                <div class="font-bold text-xs text-slate-900">7 CV Templates</div>
                 <div class="text-[11px] text-slate-500">Clean single-click export</div>
               </div>
             </div>
@@ -605,7 +783,6 @@
           </div>
         `;
       } else if (state.page === "admin") {
-        // ADMIN DASHBOARD VIEW
         const logs = JSON.parse(localStorage.getItem('cv_download_logs') || '[]');
         const filteredLogs = logs.filter(log => 
           log.userName.toLowerCase().includes(state.adminSearch.toLowerCase()) ||
@@ -871,7 +1048,7 @@
             <!-- Submit Action Bar -->
             <div class="flex justify-end pt-2">
               <button onclick="setState({ page: 'preview' })" class="bg-brand-600 hover:bg-brand-700 active:scale-[0.98] text-white font-bold text-sm px-8 py-3.5 rounded-2xl shadow-lg shadow-brand-500/20 transition-all flex items-center gap-2">
-                Generate & Preview Layout →
+                Choose Template & Preview →
               </button>
             </div>
 
@@ -879,111 +1056,55 @@
         `;
       } else if (state.page === "preview") {
         const d = state.data;
-        const fullName = `${d.personal?.firstName || ''} ${d.personal?.lastName || ''}`.trim() || "Your Name";
-        const techSkills = Array.isArray(d.skills?.technical) ? d.skills.technical : [];
-        const softSkills = Array.isArray(d.skills?.soft) ? d.skills.soft : [];
-        const certs = Array.isArray(d.skills?.certifications) ? d.skills.certifications : [];
 
         app.innerHTML = `
-          <div class="max-w-4xl mx-auto w-full space-y-6">
-            <!-- Controls Bar -->
-            <div class="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex items-center justify-between no-print">
-              <button onclick="setState({ page: 'builder' })" class="text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 transition-all">
-                ← Edit Information
-              </button>
-              <button onclick="downloadPDF()" class="bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-xs transition-all flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-                Download PDF
-              </button>
-            </div>
-
-            <!-- Resume Render Card -->
-            <div id="cv-preview-card" class="bg-white border border-slate-200/80 shadow-md rounded-2xl p-10 space-y-6 text-slate-800">
-              <!-- Header -->
-              <div class="border-b border-slate-200 pb-6 text-center">
-                <h1 class="text-3xl font-display font-extrabold text-slate-900 tracking-tight">${fullName}</h1>
-                <div class="flex flex-wrap items-center justify-center gap-3 text-xs text-slate-600 mt-2">
-                  ${d.personal?.email ? `<span>📧 ${d.personal.email}</span>` : ''}
-                  ${d.personal?.phone ? `<span>📞 ${d.personal.phone}</span>` : ''}
-                  ${d.personal?.linkedin ? `<span>🔗 ${d.personal.linkedin}</span>` : ''}
-                  ${d.personal?.github ? `<span>💻 ${d.personal.github}</span>` : ''}
+          <div class="max-w-5xl mx-auto w-full space-y-6">
+            <!-- Controls & Template Selector Bar -->
+            <div class="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-4 no-print">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">Select Template & Download</h3>
+                  <p class="text-xs text-slate-500">Pick a style below to switch formats in real-time.</p>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button onclick="setState({ page: 'builder' })" class="text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 px-4 py-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 transition-all">
+                    ← Edit Details
+                  </button>
+                  <button onclick="downloadPDF()" class="bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs px-6 py-2.5 rounded-xl shadow-xs transition-all flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                    Download PDF
+                  </button>
                 </div>
               </div>
 
-              <!-- Summary -->
-              ${d.summary ? `
-                <div class="space-y-1.5">
-                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Professional Summary</h2>
-                  <p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p>
-                </div>
-              ` : ''}
+              <!-- Template Chips Grid -->
+              <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                ${TEMPLATES.map(tpl => `
+                  <button 
+                    onclick="setState({ selectedTemplate: '${tpl.id}' })"
+                    class="p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between h-20 ${
+                      state.selectedTemplate === tpl.id 
+                        ? 'border-brand-600 bg-brand-50/50 ring-2 ring-brand-500/20' 
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                    }"
+                  >
+                    <div class="flex items-center justify-between w-full">
+                      <span class="text-sm">${tpl.icon}</span>
+                      <span class="text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                        state.selectedTemplate === tpl.id ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'
+                      }">${tpl.tag}</span>
+                    </div>
+                    <span class="text-[11px] font-bold ${state.selectedTemplate === tpl.id ? 'text-brand-900' : 'text-slate-800'} leading-snug truncate">
+                      ${tpl.name}
+                    </span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
 
-              <!-- Experience -->
-              ${d.experience?.length ? `
-                <div class="space-y-3">
-                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Work Experience</h2>
-                  <div class="space-y-3">
-                    ${d.experience.map(exp => `
-                      <div>
-                        <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3>
-                          <span class="text-[11px] text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span>
-                        </div>
-                        ${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Education -->
-              ${d.education?.length ? `
-                <div class="space-y-2">
-                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Education</h2>
-                  <div class="space-y-2">
-                    ${d.education.map(edu => `
-                      <div class="flex justify-between items-baseline">
-                        <div>
-                          <h3 class="font-bold text-slate-900 text-xs">${edu.college || 'University'}</h3>
-                          <p class="text-[11px] text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p>
-                        </div>
-                        <span class="text-[11px] text-slate-500">${edu.from || ''} - ${edu.to || ''}</span>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Key Projects -->
-              ${d.projects?.length ? `
-                <div class="space-y-2">
-                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Projects</h2>
-                  <div class="space-y-2">
-                    ${d.projects.map(proj => `
-                      <div>
-                        <div class="flex justify-between items-baseline">
-                          <h3 class="font-bold text-slate-900 text-xs">${proj.name || 'Project'}</h3>
-                          ${proj.tech ? `<span class="text-[11px] text-slate-500 italic">${proj.tech}</span>` : ''}
-                        </div>
-                        ${proj.desc ? `<p class="text-[11px] text-slate-600 mt-0.5">${proj.desc}</p>` : ''}
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-              ` : ''}
-
-              <!-- Skills & Certifications -->
-              ${(techSkills.length || softSkills.length || certs.length) ? `
-                <div class="space-y-2">
-                  <h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Skills & Certifications</h2>
-                  <div class="space-y-1 text-[11px] text-slate-700">
-                    ${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}
-                    ${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}
-                    ${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}
-                  </div>
-                </div>
-              ` : ''}
-
+            <!-- Resume Render Card -->
+            <div id="cv-preview-card" class="bg-white border border-slate-200/80 shadow-md rounded-2xl p-10 space-y-6 text-slate-800 overflow-hidden">
+              ${renderTemplateContent(state.selectedTemplate, d)}
             </div>
           </div>
         `;
