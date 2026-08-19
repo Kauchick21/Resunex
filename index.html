@@ -369,6 +369,31 @@
       { id: 'compact', name: 'Compact ATS', tag: 'Dense', icon: '🎯' }
     ];
 
+    // ─── HELPER FOR PARSING PARAGRAPHS INTO BULLET POINTS ─────────
+    function formatBullets(text, customListClass = "list-disc pl-5 space-y-1 mt-1.5 text-[11px] text-slate-600 leading-relaxed") {
+      if (!text) return '';
+      
+      let lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+      // If text is a single paragraph, split sentences into clean bullet points
+      if (lines.length === 1) {
+        if (lines[0].includes('•') || lines[0].includes(' - ')) {
+          lines = lines[0].split(/[•]|\s-\s/).map(l => l.trim()).filter(Boolean);
+        } else if (lines[0].split(/(?<=\.)\s+/).length > 1) {
+          lines = lines[0].split(/(?<=\.)\s+/).map(l => l.trim()).filter(Boolean);
+        }
+      }
+
+      // Strip existing bullet markers (*, -, •, numbers)
+      const cleaned = lines.map(line => line.replace(/^[\*\-\•\d+\.]\s*/, '').trim()).filter(Boolean);
+
+      if (cleaned.length === 0) return '';
+
+      return `<ul class="${customListClass}">
+        ${cleaned.map(l => `<li>${l}</li>`).join('')}
+      </ul>`;
+    }
+
     // ─── STATE MANAGEMENT ────────────────────────────────────────
     let state = {
       page: "landing",
@@ -521,9 +546,9 @@
               </div>
             </div>
             ${d.summary ? `<div class="space-y-1.5"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Professional Summary</h2><p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p></div>` : ''}
-            ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Work Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3><span class="text-[11px] text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-4"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Work Experience</h2><div class="space-y-4">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} ${exp.company ? `— <span class="text-slate-700 font-medium">${exp.company}</span>` : ''}</h3><span class="text-[11px] text-slate-500 font-medium">${exp.from || ''} - ${exp.to || ''}</span></div>${formatBullets(exp.resp, "list-disc pl-5 space-y-1 mt-1 text-[11px] text-slate-600 leading-relaxed")}</div>`).join('')}</div></div>` : ''}
             ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Education</h2><div class="space-y-2">${d.education.map(edu => `<div class="flex justify-between items-baseline"><div><h3 class="font-bold text-slate-900 text-xs">${edu.college || 'University'}</h3><p class="text-[11px] text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p></div><span class="text-[11px] text-slate-500">${edu.from || ''} - ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
-            ${d.projects?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Projects</h2><div class="space-y-2">${d.projects.map(proj => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${proj.name || 'Project'}</h3>${proj.tech ? `<span class="text-[11px] text-slate-500 italic">${proj.tech}</span>` : ''}</div>${proj.desc ? `<p class="text-[11px] text-slate-600 mt-0.5">${proj.desc}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.projects?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Projects</h2><div class="space-y-2">${d.projects.map(proj => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${proj.name || 'Project'}</h3>${proj.tech ? `<span class="text-[11px] text-slate-500 italic">${proj.tech}</span>` : ''}</div>${formatBullets(proj.desc, "list-disc pl-5 space-y-1 mt-1 text-[11px] text-slate-600")}</div>`).join('')}</div></div>` : ''}
             ${(techSkills.length || softSkills.length || certs.length) ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-brand-600">Skills & Certifications</h2><div class="space-y-1 text-[11px] text-slate-700">${techSkills.length ? `<p><strong>Technical:</strong> ${techSkills.join(', ')}</p>` : ''}${softSkills.length ? `<p><strong>Soft Skills:</strong> ${softSkills.join(', ')}</p>` : ''}${certs.length ? `<p><strong>Certifications:</strong> ${certs.join(', ')}</p>` : ''}</div></div>` : ''}
           </div>
         `;
@@ -544,7 +569,7 @@
             </div>
             <div class="px-10 space-y-6 pb-10">
               ${d.summary ? `<div class="space-y-1.5"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Executive Summary</h2><p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p></div>` : ''}
-              ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Professional Experience</h2><div class="space-y-4">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} <span class="font-normal text-slate-600">| ${exp.company || ''}</span></h3><span class="text-[11px] text-slate-500 font-medium">${exp.from || ''} – ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1.5 leading-relaxed whitespace-pre-line">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+              ${d.experience?.length ? `<div class="space-y-4"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Professional Experience</h2><div class="space-y-4">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} <span class="font-normal text-slate-600">| ${exp.company || ''}</span></h3><span class="text-[11px] text-slate-500 font-medium">${exp.from || ''} – ${exp.to || ''}</span></div>${formatBullets(exp.resp, "list-disc pl-5 space-y-1 mt-1.5 text-[11px] text-slate-600 leading-relaxed")}</div>`).join('')}</div></div>` : ''}
               ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Education</h2><div class="space-y-2">${d.education.map(edu => `<div class="flex justify-between items-baseline"><div><h3 class="font-bold text-slate-900 text-xs">${edu.college || 'University'}</h3><p class="text-[11px] text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p></div><span class="text-[11px] text-slate-500">${edu.from || ''} – ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
               ${(techSkills.length || softSkills.length || certs.length) ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-900 border-b-2 border-slate-900 pb-1">Core Competencies</h2><div class="grid grid-cols-2 gap-2 text-[11px] text-slate-700">${techSkills.length ? `<div><strong>Technical:</strong> ${techSkills.join(', ')}</div>` : ''}${softSkills.length ? `<div><strong>Leadership:</strong> ${softSkills.join(', ')}</div>` : ''}${certs.length ? `<div class="col-span-2"><strong>Certifications:</strong> ${certs.join(', ')}</div>` : ''}</div></div>` : ''}
             </div>
@@ -565,8 +590,8 @@
               </div>
             </div>
             ${d.summary ? `<div class="space-y-1"><h2 class="font-bold text-slate-900 text-xs">// ABOUT_ME</h2><p class="text-[11px] text-slate-700 leading-relaxed font-sans">${d.summary}</p></div>` : ''}
-            ${d.projects?.length ? `<div class="space-y-3"><h2 class="font-bold text-slate-900 text-xs">// FEATURED_PROJECTS</h2><div class="space-y-3">${d.projects.map(proj => `<div class="bg-slate-50 p-3 rounded border border-slate-200"><div class="flex justify-between font-bold text-slate-900"><span>${proj.name || 'Project'}</span><span class="text-[10px] text-slate-500">${proj.tech || ''}</span></div>${proj.desc ? `<p class="text-[11px] text-slate-600 mt-1 font-sans">${proj.desc}</p>` : ''}</div>`).join('')}</div></div>` : ''}
-            ${d.experience?.length ? `<div class="space-y-3"><h2 class="font-bold text-slate-900 text-xs">// EXPERIENCE</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between font-bold text-slate-900"><span>${exp.title || 'Role'} @ ${exp.company || ''}</span><span class="text-[10px] text-slate-500">${exp.from || ''} - ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 font-sans leading-relaxed">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.projects?.length ? `<div class="space-y-3"><h2 class="font-bold text-slate-900 text-xs">// FEATURED_PROJECTS</h2><div class="space-y-3">${d.projects.map(proj => `<div class="bg-slate-50 p-3 rounded border border-slate-200"><div class="flex justify-between font-bold text-slate-900"><span>${proj.name || 'Project'}</span><span class="text-[10px] text-slate-500">${proj.tech || ''}</span></div>${formatBullets(proj.desc, "list-disc pl-5 space-y-1 mt-1 text-[11px] text-slate-600 font-sans")}</div>`).join('')}</div></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-3"><h2 class="font-bold text-slate-900 text-xs">// EXPERIENCE</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between font-bold text-slate-900"><span>${exp.title || 'Role'} @ ${exp.company || ''}</span><span class="text-[10px] text-slate-500">${exp.from || ''} - ${exp.to || ''}</span></div>${formatBullets(exp.resp, "list-disc pl-5 space-y-1 mt-1 text-[11px] text-slate-600 font-sans leading-relaxed")}</div>`).join('')}</div></div>` : ''}
             ${techSkills.length ? `<div class="space-y-1"><h2 class="font-bold text-slate-900 text-xs">// TECH_STACK</h2><div class="flex flex-wrap gap-1.5">${techSkills.map(s => `<span class="bg-slate-100 text-slate-800 px-2 py-0.5 rounded text-[10px] border border-slate-200">${s}</span>`).join('')}</div></div>` : ''}
           </div>
         `;
@@ -585,7 +610,7 @@
               </div>
             </div>
             ${d.summary ? `<div class="space-y-1"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Summary</h2><p class="text-xs text-slate-700 leading-relaxed font-serif">${d.summary}</p></div>` : ''}
-            ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-xs text-slate-900">${exp.title || 'Role'}, <span class="italic font-normal">${exp.company || ''}</span></h3><span class="text-[11px] italic text-slate-600">${exp.from || ''} – ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-700 mt-1 leading-relaxed">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-xs text-slate-900">${exp.title || 'Role'}, <span class="italic font-normal">${exp.company || ''}</span></h3><span class="text-[11px] italic text-slate-600">${exp.from || ''} – ${exp.to || ''}</span></div>${formatBullets(exp.resp, "list-disc pl-5 space-y-1 mt-1 text-[11px] text-slate-700 font-serif leading-relaxed")}</div>`).join('')}</div></div>` : ''}
             ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Education</h2><div class="space-y-2">${d.education.map(edu => `<div class="flex justify-between items-baseline"><div><h3 class="font-bold text-xs text-slate-900">${edu.college || 'University'}</h3><p class="text-[11px] italic text-slate-600">${edu.degree || ''} ${edu.spec || ''}</p></div><span class="text-[11px] italic text-slate-600">${edu.from || ''} – ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
             ${(techSkills.length || softSkills.length) ? `<div class="space-y-1"><h2 class="text-xs font-bold uppercase tracking-widest text-slate-800 border-b border-slate-200 pb-0.5">Skills</h2><p class="text-[11px] text-slate-700">${[...techSkills, ...softSkills].join(' • ')}</p></div>` : ''}
           </div>
@@ -614,7 +639,7 @@
             <!-- Main Content -->
             <div class="col-span-8 p-6 pl-2 space-y-5">
               ${d.summary ? `<div class="space-y-1"><h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Profile</h2><p class="text-xs text-slate-600 leading-relaxed">${d.summary}</p></div>` : ''}
-              ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between"><h3 class="font-bold text-xs text-slate-900">${exp.title || 'Role'}</h3><span class="text-[10px] text-slate-400">${exp.from || ''} - ${exp.to || ''}</span></div><p class="text-[11px] font-semibold text-slate-500">${exp.company || ''}</p>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 leading-relaxed">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+              ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between"><h3 class="font-bold text-xs text-slate-900">${exp.title || 'Role'}</h3><span class="text-[10px] text-slate-400">${exp.from || ''} - ${exp.to || ''}</span></div><p class="text-[11px] font-semibold text-slate-500">${exp.company || ''}</p>${formatBullets(exp.resp, "list-disc pl-5 space-y-1 mt-1 text-[11px] text-slate-600 leading-relaxed")}</div>`).join('')}</div></div>` : ''}
               ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-indigo-600">Education</h2><div class="space-y-2">${d.education.map(edu => `<div><h3 class="font-bold text-xs text-slate-900">${edu.college || 'University'}</h3><p class="text-[11px] text-slate-600">${edu.degree || ''} (${edu.from || ''} - ${edu.to || ''})</p></div>`).join('')}</div></div>` : ''}
             </div>
           </div>
@@ -634,7 +659,7 @@
               </div>
             </div>
             ${d.summary ? `<div class="space-y-1 bg-emerald-50/50 p-3 rounded-r-lg border-l-2 border-emerald-500"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-800">Overview</h2><p class="text-xs text-slate-700 leading-relaxed">${d.summary}</p></div>` : ''}
-            ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-700 border-b border-emerald-100 pb-1">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} <span class="text-emerald-700 font-normal">@ ${exp.company || ''}</span></h3><span class="text-[11px] text-slate-500">${exp.from || ''} - ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-600 mt-1 leading-relaxed">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-3"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-700 border-b border-emerald-100 pb-1">Experience</h2><div class="space-y-3">${d.experience.map(exp => `<div><div class="flex justify-between items-baseline"><h3 class="font-bold text-slate-900 text-xs">${exp.title || 'Role'} <span class="text-emerald-700 font-normal">@ ${exp.company || ''}</span></h3><span class="text-[11px] text-slate-500">${exp.from || ''} - ${exp.to || ''}</span></div>${formatBullets(exp.resp, "list-disc pl-5 space-y-1 mt-1 text-[11px] text-slate-600 leading-relaxed")}</div>`).join('')}</div></div>` : ''}
             ${d.education?.length ? `<div class="space-y-2"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-700 border-b border-emerald-100 pb-1">Education</h2><div class="space-y-2">${d.education.map(edu => `<div class="flex justify-between items-baseline"><div><h3 class="font-bold text-slate-900 text-xs">${edu.college || 'University'}</h3><p class="text-[11px] text-slate-600">${edu.degree || ''}</p></div><span class="text-[11px] text-slate-500">${edu.from || ''} - ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
             ${(techSkills.length || softSkills.length) ? `<div class="space-y-1"><h2 class="text-xs font-bold uppercase tracking-wider text-emerald-700 border-b border-emerald-100 pb-1">Expertise</h2><p class="text-[11px] text-slate-700">${[...techSkills, ...softSkills].join(' • ')}</p></div>` : ''}
           </div>
@@ -652,7 +677,7 @@
               </p>
             </div>
             ${d.summary ? `<div class="space-y-1"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Professional Summary</h2><p class="text-[11px] text-slate-800 leading-normal">${d.summary}</p></div>` : ''}
-            ${d.experience?.length ? `<div class="space-y-2"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Work Experience</h2><div class="space-y-2">${d.experience.map(exp => `<div><div class="flex justify-between font-bold"><span>${exp.company || ''} — ${exp.title || ''}</span><span>${exp.from || ''} – ${exp.to || ''}</span></div>${exp.resp ? `<p class="text-[11px] text-slate-700 mt-0.5 leading-normal">${exp.resp}</p>` : ''}</div>`).join('')}</div></div>` : ''}
+            ${d.experience?.length ? `<div class="space-y-2"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Work Experience</h2><div class="space-y-2">${d.experience.map(exp => `<div><div class="flex justify-between font-bold"><span>${exp.company || ''} — ${exp.title || ''}</span><span>${exp.from || ''} – ${exp.to || ''}</span></div>${formatBullets(exp.resp, "list-disc pl-5 space-y-0.5 mt-0.5 text-[11px] text-slate-800 leading-normal")}</div>`).join('')}</div></div>` : ''}
             ${d.education?.length ? `<div class="space-y-1"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Education</h2><div class="space-y-1">${d.education.map(edu => `<div class="flex justify-between"><div><span class="font-bold">${edu.college || ''}</span>, ${edu.degree || ''}</div><span>${edu.from || ''} – ${edu.to || ''}</span></div>`).join('')}</div></div>` : ''}
             ${(techSkills.length || softSkills.length) ? `<div class="space-y-1"><h2 class="font-bold text-[11px] uppercase tracking-wider border-b border-slate-400">Skills</h2><p class="text-[11px] text-slate-800">${[...techSkills, ...softSkills].join(', ')}</p></div>` : ''}
           </div>
@@ -956,8 +981,8 @@
                       </div>
                     </div>
                     <div>
-                      <label class="block text-[11px] font-medium text-slate-500">Responsibilities</label>
-                      <textarea rows="3" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white">${exp.resp || ''}</textarea>
+                      <label class="block text-[11px] font-medium text-slate-500">Responsibilities (separate lines or sentences for bullets)</label>
+                      <textarea rows="4" onchange="updateArrayItem('experience', ${idx}, 'resp', this.value)" class="w-full border border-slate-200 rounded-lg p-2 text-xs bg-white">${exp.resp || ''}</textarea>
                     </div>
                   </div>
                 `).join('')}
